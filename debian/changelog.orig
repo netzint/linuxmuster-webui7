@@ -1,4 +1,64 @@
+<<<<<<< HEAD
+linuxmuster-webui7 (17.1.44) lmn71-testing; urgency=low
+
+  * Merge changes from linuxmuster repository
+
+ -- Lukas Spitznagel <lukas.spitznagel@netzint.de>  Tue, 10 Jan 2023 16:38:42 +0200
+
+linuxmuster-webui7 (7.1.44) lmn71; urgency=medium
+
+  * [Users] Fix pdf passwords generation. 
+
+ -- Arnaud Kientz <arnaud@linuxmuster.net>  Tue, 10 Jan 2023 14:57:57 +0100
+
+linuxmuster-webui7 (7.1.43) lmn71; urgency=medium
+
+  * [Session] Fix user list in exam modus. 
+
+ -- Arnaud Kientz <arnaud@linuxmuster.net>  Mon, 09 Jan 2023 14:05:24 +0100
+
+linuxmuster-webui7 (7.1.42) lmn71; urgency=medium
+
+  * [Settings] Fix typo in saving smtp config. 
+
+ -- Arnaud Kientz <arnaud@linuxmuster.net>  Sun, 08 Jan 2023 14:38:11 +0100
+
+linuxmuster-webui7 (7.1.41) lmn71; urgency=medium
+
+  * [Smbclient] Use directory names instead of label names for GPO.
+
+ -- Arnaud Kientz <arnaud@linuxmuster.net>  Sat, 07 Jan 2023 17:04:30 +0100
+
+linuxmuster-webui7 (7.1.40) lmn71; urgency=medium
+
+  * Upgrade to Ajenti 2.2.3 
+
+ -- Arnaud Kientz <arnaud@linuxmuster.net>  Sat, 07 Jan 2023 10:45:25 +0100
+
+linuxmuster-webui7 (7.1.39) lmn71; urgency=medium
+
+  * Add python3-jinja2 to dependency
+  * Add missing chars for passwords. Fix #254.
+  * Fix looking for dfs proxies
+  * [Clients] Edit Drives.xml Fix #228
+  * [Devices] Sort by padded ips. Fix #249
+  * [Groupmembership] Fix double teacher role
+  * [Groupmembership] Refresh members list when adding a teacher in class
+  * [Groupmembership] Always add teachers as admins in classes
+  * [Landingpage] Fix injector error
+  * [Linbo-sync] Add support for multischool. Fix #250
+  * [Session] Sort username by lastname and firstname. Fix #127
+  * [Session] Add button to directly rename/delete a session
+  * [Smbclient] Use samba realm instead of samba domain to access samba shares
+  * [Users] Better handle some errors on sophomorix-check and encoding detecting
+  * [Users] Blur background if modal window with password is shown
+
+ -- Arnaud Kientz <arnaud@linuxmuster.net>  Sat, 07 Jan 2023 10:29:01 +0100
+
+linuxmuster-webui7 (17.1.38.5) lmn71; urgency=low
+=======
 linuxmuster-webui7 (17.1.38.5) lmn71-testing; urgency=low
+>>>>>>> parent of 40005991c (Merged lmn71-testing in lmn71)
 
   * Merged lmn71-testing in lmn71
 
