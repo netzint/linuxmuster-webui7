@@ -1,10 +1,28 @@
-angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $http, $location, $route, $uibModal, $window, $q, $interval, gettext, notify, messagebox, pageTitle, lmFileEditor, lmEncodingMap, filesystem, validation, $rootScope, wait, userPassword, lmnSession) ->
+angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $http, $location, $route, $uibModal, $window, $q, $interval, gettext, notify, messagebox, pageTitle, lmFileEditor, lmEncodingMap, filesystem, validation, identity, $rootScope, wait, userPassword, lmnSession, smbclient) ->
 
     $scope.stateChanged = false
     $scope.sessionChanged = false
     $scope.addParticipant = ''
     $scope.addSchoolClass = ''
     $scope.examMode = false
+    $scope.file_icon = {
+        'powerpoint': "far fa-file-powerpoint",
+        'text': "far fa-file-alt",
+        'code': "far fa-file-code",
+        'word': "far fa-file-word",
+        'pdf': "far fa-file-pdf",
+        'excel': "far fa-file-excel",
+        'audio': "far fa-file-audio",
+        'archive': "far fa-file-archive",
+        'video': "far fa-file-video",
+        'image': "far fa-file-image",
+        'file': "far fa-file",
+    }
+    $scope.management = {
+        'wifi': false,
+        'internet': false,
+        'printing': false,
+    }
 
     $window.onbeforeunload = (event) ->
         if !$scope.sessionChanged
@@ -14,8 +32,8 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
 
     $scope.$on("$destroy", () ->
         # Avoid confirmation on others controllers
-        if $scope.refresh != undefined
-            $interval.cancel($scope.refresh)
+        $scope.stopRefreshFiles()
+        $scope.stopRefreshParticipants()
         $window.onbeforeunload = undefined
     )
 
@@ -54,56 +72,15 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
 
     $scope.sort = $scope.sorts[0]
 
-    $scope.fields = {
-        sAMAccountName:
-            visible: true
-            name: gettext('Userdata')
-        transfer:
-            visible: true
-            name: gettext('Transfer')
-        workDirectory:
-            visible: true
-            name: gettext('')
-        sophomorixRole:
-            visible: false
-            name: gettext('sophomorixRole')
-        wifi:
-            visible: true
-            icon:"fa fa-wifi"
-            title: gettext('Wifi-Access')
-            checkboxAll: true
-            checkboxStatus: false
-        internet:
-            visible: true
-            icon:"fa fa-globe"
-            title: gettext('Internet-Access')
-            checkboxAll: true
-            checkboxStatus: false
-        intranet:
-            visible: false
-            icon:"fa fa-server"
-            title: gettext('Intranet Access')
-            checkboxAll: true
-        webfilter:
-            visible: false
-            icon:"fa fa-filter"
-            title: gettext('Webfilter')
-            checkboxAll: true
-            checkboxStatus: false
-        printing:
-            visible: true
-            icon:"fa fa-print"
-            title: gettext('Printing')
-            checkboxAll: true
-            checkboxStatus: false
-    }
-
     $scope.backToSessionList = () ->
         $location.path('/view/lmn/sessionsList')
 
     $scope.session = lmnSession.current
     $scope.extExamUsers = lmnSession.extExamUsers
     $scope.examUsers = lmnSession.examUsers
+    lmnSession.createWorkingDirectory($scope.session.members).then () ->
+        $scope.missing_schoolclasses = lmnSession.user_missing_membership.map((user) -> user.sophomorixAdminClass)
+        $scope.missing_schoolclasses = [... new Set($scope.missing_schoolclasses)].join(',')
 
     $scope.refreshUsers = () ->
        lmnSession.refreshUsers().then () ->
@@ -123,23 +100,81 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
     if $scope.session.sid == ''
         $scope.backToSessionList()
 
+    $scope.isStudent = (user) ->
+        return ['student', 'examuser'].indexOf(user.sophomorixRole) > -1
+
+    # Fix missing membership for share
+
+    $scope.fixMembership = (group) ->
+        $http.post('/api/lmn/groupmembership/membership', {
+            action: 'addadmins',
+            entity: $scope.identity.user,
+            groupname: $scope.missing_schoolclasses,
+            type: 'class'
+        }).then (resp) ->
+            if resp['data'][0] == 'ERROR'
+                notify.error (resp['data'][1])
+            if resp['data'][0] == 'LOG'
+                notify.success gettext(resp['data'][1])
+                $rootScope.identity = identity
+                $scope.refresh_krbcc()
+
+    $scope.refresh_krbcc = () ->
+        smbclient.refresh_krbcc().then () ->
+            for user in lmnSession.user_missing_membership
+                position = $scope.session.members.indexOf(user)
+                $scope.session.members[position].files = []
+                lmnSession._createWorkingDirectory(user)
+            identity.init().then () ->
+                console.log("Identity renewed !")
+                $scope.missing_schoolclasses = []
+
+    # Refresh room users
+
     $scope.updateParticipants = () ->
         $http.get('/api/lmn/session/userInRoom').then (resp) ->
             if resp.data.usersList.length != 0
                 $http.post("/api/lmn/session/userinfo", {users:resp.data.usersList}).then (rp) ->
                     $scope.session.members = rp.data
 
-    $scope.stopRefresh = () ->
-        $interval.cancel($scope.refresh)
-        $scope.autorefresh = false
+    $scope.stopRefreshParticipants = () ->
+        if $scope.refresh_participants != undefined
+            $interval.cancel($scope.refresh_participants)
+        $scope.autorefresh_participants = false
 
-    $scope.startRefresh = () ->
+    $scope.startRefreshParticipants = () ->
         $scope.updateParticipants()
-        $scope.refresh = $interval($scope.updateParticipants, 5000, 0)
-        $scope.autorefresh = true
+        $scope.refresh_participants = $interval($scope.updateParticipants, 5000, 0)
+        $scope.autorefresh_participants = true
 
     if $scope.session.type == 'room'
-        $scope.startRefresh()
+        $scope.startRefreshParticipants()
+
+    # List working directory files
+
+    $scope.get_file_icon = (filetype) ->
+        return $scope.file_icon[filetype]
+
+    $scope._updateFileList = (participant) ->
+        if participant.files != 'ERROR' and participant.files != 'ERROR-teacher'
+            path = "#{participant.homeDirectory}\\transfer\\#{$scope.identity.user}\\_collect"
+            smbclient.list(path).then((data) -> participant.files = data.items)
+
+    $scope.updateFileList = () ->
+        for participant in $scope.session.members
+            $scope._updateFileList(participant)
+
+    $scope.stopRefreshFiles = () ->
+        if $scope.refresh_files != undefined
+            $interval.cancel($scope.refresh_files)
+        $scope.autorefresh_files = false
+
+    $scope.startRefreshFiles = () ->
+        $scope.updateFileList()
+        $scope.refresh_files = $interval($scope.updateFileList, 5000, 0)
+        $scope.autorefresh_files = true
+
+    # Management groups
 
     $scope.setManagementGroup = (group, participant) ->
         $scope.stateChanged = true
@@ -150,28 +185,25 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
             notify.success("Group #{group} changed for #{user[0]}")
             $scope.stateChanged = false
 
-    $scope.selectAll = (id) ->
-        console.log('later')
-    #        if item is 'exammode'
-    #            managementgroup = 'exammode_boolean'
-
     $scope.setManagementGroupAll = (group) ->
         $scope.stateChanged = true
         usersList = []
-        new_value = !$scope.fields[group].checkboxStatus
+        $scope.management[group] = !$scope.management[group]
 
         for participant in $scope.session.members
             # Only change management group for student, and not others teachers
             if participant.sophomorixRole == 'student'
-                participant[group] = new_value
+                participant[group] = $scope.management[group]
                 usersList.push(participant.sAMAccountName)
 
-        if new_value == false
+        if $scope.management[group] == false
             group = "no#{group}"
 
         $http.post('/api/lmn/managementgroup', {group:group, users:usersList}).then (resp) ->
             notify.success("Group #{group} changed for #{usersList.join()}")
             $scope.stateChanged = false
+
+    # Manage session
 
     $scope.renameSession = () ->
         lmnSession.rename($scope.session.sid, $scope.session.name).then (resp) ->
@@ -188,30 +220,6 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
             # instead of going back to the sessions list
             # But for this sophomorix needs to return the session id when creating a new one
             $scope.backToSessionList()
-
-    $scope.showGroupDetails = (index, groupType, groupName) ->
-       $uibModal.open(
-          templateUrl: '/lmn_groupmembership:resources/partial/groupDetails.modal.html'
-          controller:  'LMNGroupDetailsController'
-          size: 'lg'
-          resolve:
-            groupType: () -> groupType
-            groupName: () -> groupName
-       )
-
-    $scope.showRoomDetails = () ->
-        $http.get('/api/lmn/session/userInRoom').then (resp) ->
-            if resp.data.name == ''
-                messagebox.show(title: gettext('Info'), text: gettext('Currently its not possible to determine your room, try to login into your computer again.'), positive: 'OK')
-            else
-                usersInRoom = resp.data
-                $uibModal.open(
-                   templateUrl: '/lmn_session_new:resources/partial/roomDetails.modal.html'
-                   controller:  'LMNRoomDetailsController'
-                   size: 'lg'
-                   resolve:
-                     usersInRoom: () -> usersInRoom
-                )
 
     $scope.findUsers = (q) ->
         return $http.get("/api/lmn/session/user-search/#{q}").then (resp) ->
@@ -259,6 +267,8 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
                 $http.patch('/api/lmn/session/participants', {'users':[participant.sAMAccountName], 'session': $scope.session.sid}).then () ->
                     $scope.session.members.splice(deleteIndex, 1)
 
+    # Exam mode
+
     $scope.startExam = () ->
         # End exam for a whole group
         $scope.stateChanged = true
@@ -266,6 +276,7 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
             $scope.examMode = true
             $scope.stateChanged = false
             lmnSession.getExamUsers()
+            $scope.stopRefreshFiles()
 
     $scope.stopExam = () ->
         # End exam for a whole group
@@ -279,6 +290,7 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
                 $scope.refreshUsers()
                 $scope.examMode = false
                 $scope.stateChanged = false
+            $scope.stopRefreshFiles()
 
     $scope._stopUserExam = (user) ->
         # End exam for a specific user: backend promise without messagebox
@@ -324,6 +336,8 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
             return true
         return false
 
+    # Passwords
+
     $scope.showFirstPassword = (username) ->
         $scope.blurred = true
         # if user is exam user show InitialPassword of real user
@@ -343,252 +357,211 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
         if not $scope._checkExamUser(user.sAMAccountName)
             userPassword.setCustomPassword(user, pwtype)
 
-    $scope.userInfo = (user) ->
-        $uibModal.open(
-            templateUrl: '/lmn_users:resources/partial/userDetails.modal.html'
-            controller: 'LMNUserDetailsController'
-            size: 'lg'
-            resolve:
-                id: () -> user
-                role: () -> 'students'
-        )
-
-
-    typeIsArray = Array.isArray || ( value ) -> return {}.toString.call( value ) is '[object Array]'
-
-    validateResult = (resp) ->
-        if resp['data'][0] == 'ERROR'
-            notify.error (resp['data'][1])
-        if resp['data'][0] == 'LOG'
-            notify.success gettext(resp['data'][1])
-
-
-
-    $scope.shareTrans = (command, senders, receivers, sessioncomment) ->
-        # When share with session we get the whole session as an array.
-        # The function on the other hand waits for an array containing just the  usernames so we extract
-        # these into an array
-        # If share option is triggered with just one user we get this user  as a string. If so we also have
-        # to put it in an array
-        bulkMode = 'false'
-        participantsArray = []
-        if typeIsArray receivers
-            bulkMode = 'true'
-            for receiver in receivers
-                participantsArray.push receiver['sAMAccountName']
-        else
-            participantsArray.push receivers
-        receivers = participantsArray
-
-        $uibModal.open(
+    $scope.choose_items = (path, command) ->
+        return $uibModal.open(
            templateUrl: '/lmn_session_new:resources/partial/selectFile.modal.html'
            controller: 'LMNSessionFileSelectModalController'
+           scope: $scope
            resolve:
-              action: () -> 'share'
-              bulkMode: () -> bulkMode
-              senders: () -> senders
-              receivers: () -> receivers
-              command: () -> command
-              sessionComment: () -> sessioncomment
-        ).result.then (result) ->
-           if result.response is 'accept'
-               wait.modal(gettext('Sharing files...'), 'progressbar')
-               $http.post('/api/lmn/session/trans', {command: command, senders: senders, receivers: receivers, files: result.files, session: sessioncomment}).then (resp) ->
-                   $rootScope.$emit('updateWaiting', 'done')
-                   validateResult(resp)
+              action: () -> command
+              path: () -> path
+        ).result
 
+    $scope._share = (participant, items) ->
+        share_path = "#{participant.homeDirectory}\\transfer\\#{identity.profile.sAMAccountName}"
+        promises = []
+        for item in items
+            promises.push(smbclient.copy(item.path, share_path + '/' + item.name, notify_success=false))
+        $q.all(promises).then () ->
+            notify.success(gettext("Files shared!"))
 
-    $scope.collectTrans = (command, senders, receivers, sessioncomment) ->
-        # When collect from session we already get the users in an array containing the user objects.
-        # If collect option is triggered with just on use we get this user as an object. If so we also
-        # have to put it in an array.
-        #console.log (command)
-        #console.log (senders)
-        bulkMode = 'false'
-        participantsArray = []
-        if typeIsArray senders
-            bulkMode = 'true'
-        else
-            participantsArray.push senders
-            senders = participantsArray
-        transTitle = 'transfer'
-        #console.log (bulkMode)
-        $uibModal.open(
-           templateUrl: '/lmn_session_new:resources/partial/selectFile.modal.html'
-           controller: 'LMNSessionFileSelectModalController'
-           resolve:
-              action: () -> 'collect'
-              bulkMode: () -> bulkMode
-              senders: () -> senders
-              receivers: () -> receivers
-              command: () -> command
-              sessionComment: () -> sessioncomment
-        ).result.then (result) ->
+    $scope.shareUser = (participant) ->
+        # participants is an array containing one or all participants
+        choose_path = "#{identity.profile.homeDirectory}\\transfer"
+        $scope.choose_items(choose_path, 'share').then (result) ->
             if result.response is 'accept'
-                #return
-                wait.modal(gettext('Collecting files...'), 'progressbar')
-                if command is 'copy'
-                    $http.post('/api/lmn/session/trans', {command: command, senders: senders, receivers: receivers, files: result.files, session: sessioncomment}).then (resp) ->
-                        $rootScope.$emit('updateWaiting', 'done')
-                        validateResult(resp)
-                if command is 'move'
-                    $http.post('/api/lmn/session/trans', {command: command, senders: senders, receivers: receivers, files: result.files, session: sessioncomment}).then (resp) ->
-                        $rootScope.$emit('updateWaiting', 'done')
-                        validateResult(resp)
+                $scope._share(participant, result.items)
 
+    $scope.shareAll = () ->
+        choose_path = "#{identity.profile.homeDirectory}\\transfer"
+        $scope.choose_items(choose_path, 'share').then (result) ->
+            if result.response is 'accept'
+                for participant in $scope.session.members
+                    $scope._share(participant, result.items)
 
-    $scope.notImplemented = (user) ->
-                messagebox.show(title: gettext('Not implemented'), positive: 'OK')
+    $scope._leading_zero = (int) ->
+        if "#{int}".length == 1
+            return "0#{int}"
+        return int
 
-    # Websession part
+    $scope.now = () ->
+        # Formating date for collect directory
+        date = new Date()
+        year = date.getFullYear()
+        month = $scope._leading_zero(date.getMonth()+1)
+        day = $scope._leading_zero(date.getDate())
+        hours = $scope._leading_zero(date.getHours())
+        minutes = $scope._leading_zero(date.getMinutes())
+        seconds = $scope._leading_zero(date.getSeconds())
+        return "#{year}#{month}#{day}-#{hours}#{minutes}#{seconds}"
 
-    $scope.getWebConferenceEnabled = () ->
-        $http.get('/api/lmn/websession/webConferenceEnabled').then (resp) ->
-            if resp.data == true
-                $scope.websessionEnabled = true
-                $scope.websessionGetStatus()
-            else
-                $scope.websessionEnabled = false;
-    $scope.getWebConferenceEnabled()
-    $scope.websessionIsRunning = false
+    $scope._collect = (command, items, collect_path) ->
+        promises = []
+        if command is 'copy'
+            for item in items
+                promises.push(smbclient.copy(item.path, collect_path + '/' + item.name, notify_success=false))
+        if command is 'move'
+            for item in items
+                promises.push(smbclient.move(item.path, collect_path + '/' + item.name, notify_success=false))
+        return $q.all(promises)
 
-    $scope.websessionGetStatus = () ->
-        sessionname = $scope.session.name + "-" + $scope.session.sid
-        $http.get("/api/lmn/websession/webConference/#{sessionname}").then (resp) ->
-            if resp.data["status"] is "SUCCESS"
-                if resp.data["data"]["status"] == "started"
-                    $scope.websessionIsRunning = true
-                else
-                    $scope.websessionIsRunning = false
-                $scope.websessionID = resp.data["data"]["id"]
-                $scope.websessionAttendeePW = resp.data["data"]["attendeepw"]
-                $scope.websessionModeratorPW = resp.data["data"]["moderatorpw"]
-            else
-                $scope.websessionIsRunning = false
+    $scope.collectAll = (command) ->
+        # command is copy or move
 
-    $scope.websessionToggle = () ->
-        if $scope.websessionIsRunning == false
-            $scope.websessionStart()
-        else
-            $scope.websessionStop()
+        promises = []
+        now = $scope.now()
+        transfer_directory = "#{$scope.session.type}_#{$scope.session.name}_#{now}"
+        collect_path = "#{identity.profile.homeDirectory}\\transfer\\#{transfer_directory}"
+        smbclient.createDirectory(collect_path)
 
-    $scope.websessionStop = () ->
-        $http.post('/api/lmn/websession/endWebConference', {id: $scope.websessionID, moderatorpw: $scope.websessionModeratorPW}).then (resp) ->
-            $http.delete("/api/lmn/websession/webConference/#{$scope.websessionID}").then (resp) ->
-                if resp.data["status"] == "SUCCESS"
-                    notify.success gettext("Successfully stopped!")
-                    $scope.websessionIsRunning = false
-                else
-                    notify.error gettext('Cannot stop entry!')
-
-    $scope.websessionStart = () ->
-        tempparticipants = []
+        promises = []
         for participant in $scope.session.members
-            tempparticipants.push(participant.sAMAccountName)
+            dst = "#{collect_path}\\#{participant.sAMAccountName}"
+            items = [{
+                "path": "#{participant.homeDirectory}\\transfer\\#{$scope.identity.user}\\_collect",
+                "name": ""
+            }]
+            promises.push($scope._collect(command, items, dst))
+        $q.all(promises).then () ->
+            # _collect directory was moved, so recreating empty working diretories for all
+            lmnSession.createWorkingDirectory($scope.session.members).then () ->
+                $scope.missing_schoolclasses = lmnSession.user_missing_membership.map((user) -> user.sophomorixAdminClass).join(',')
+            notify.success(gettext("Files collected!"))
 
-        $http.post('/api/lmn/websession/webConferences', {sessionname: $scope.session.name + "-" + $scope.session.sid, sessiontype: "private", sessionpassword: "", participants: tempparticipants}).then (resp) ->
-            if resp.data["status"] is "SUCCESS"
-                $scope.websessionID = resp.data["id"]
-                $scope.websessionAttendeePW = resp.data["attendeepw"]
-                $scope.websessionModeratorPW = resp.data["moderatorpw"]
-                $http.post('/api/lmn/websession/startWebConference', {sessionname: $scope.session.name + "-" + $scope.session.sid, id: $scope.websessionID, attendeepw: $scope.websessionAttendeePW, moderatorpw: $scope.websessionModeratorPW}).then (resp) ->
-                    if resp.data["returncode"] is "SUCCESS"
-                        $http.post('/api/lmn/websession/joinWebConference', {id: $scope.websessionID, password: $scope.websessionModeratorPW, name: $scope.identity.profile.sn + ", " + $scope.identity.profile.givenName}).then (resp) ->
-                            $scope.websessionIsRunning = true
-                            window.open(resp.data, '_blank')
-                    else
-                        notify.error gettext('Cannot start websession! Try to reload page!')
-            else
-                notify.error gettext("Create session failed! Try again later!")
+    $scope.collectUser = (command, participant) ->
+        # participant is only one user
+        # command is copy or move
 
-# Websession part
+        now = $scope.now()
+        transfer_directory = "#{$scope.session.type}_#{$scope.session.name}_#{now}"
+        collect_path = "#{identity.profile.homeDirectory}\\transfer\\#{transfer_directory}\\#{participant.sAMAccountName}"
+        smbclient.createDirectory(collect_path)
 
-angular.module('lmn.session_new').controller 'LMNRoomDetailsController', ($scope, $route, $uibModal, $uibModalInstance, $http, gettext, notify, messagebox, pageTitle, usersInRoom) ->
-        $scope.usersInRoom = usersInRoom
+        choose_path = "#{participant.homeDirectory}\\transfer\\#{$scope.identity.user}\\_collect"
+        $scope.choose_items(choose_path, command).then (result) ->
+            if result.response is 'accept'
+                $scope._collect(command, result.items, collect_path).then () ->
+                    notify.success(gettext("Files collected!"))
 
-        $scope.close = () ->
-            $uibModalInstance.dismiss()
+angular.module('lmn.session_new').controller 'LMNSessionFileSelectModalController', ($scope, $uibModalInstance, gettext, notify, $http, action, path, messagebox, smbclient) ->
 
-angular.module('lmn.session_new').controller 'LMNSessionFileSelectModalController', ($scope, $uibModalInstance, gettext, notify, $http, bulkMode, senders, receivers, action, command, sessionComment, messagebox) ->
-    $scope.bulkMode = bulkMode
-    $scope.senders = senders
-    $scope.receivers = receivers
-    $scope.action = action
-    $scope.command = command
+    $scope.action = action # copy, move or share
+    $scope.init_path = path
+    $scope.current_path = path
+    $scope.parent_path = []
+    $scope.toggleAllStatus = false
+    $scope.count_selected = 0
+    $scope.uploadProgress = []
 
-    $scope.setTransferPath = (username) ->
-        role = $scope.identity.profile.sophomorixRole
-        school = $scope.identity.profile.activeSchool
-        $scope.transferPath = '/srv/webuiUpload/'+school+'/'+role+'/'+username+'/'
-        # create tmp dir for upload
-        $scope.createDir($scope.transferPath)
-        $scope.owner = username
+    $scope.load_path = (path) ->
+        smbclient.list(path).then (data) ->
+            $scope.items = data.items
+            $scope.parent_path.push($scope.current_path)
+            $scope.current_path = path
 
+    $scope.toggleAll = () ->
+        for item in $scope.items
+            item.selected = !item.selected
+
+    $scope.refreshSelected = () ->
+        $scope.count_selected = $scope.items.filter((item) -> item.selected == true).length
+
+    $scope.back = () ->
+        path = $scope.parent_path.at(-1)
+        smbclient.list(path).then (data) ->
+            $scope.items = data.items
+            $scope.current_path = path
+            $scope.parent_path.pop()
+
+    $scope.load_path($scope.init_path)
 
     $scope.save = () ->
-        filesToTrans =  []
-        angular.forEach $scope.files['TREE'], (file, id) ->
-            if file['checked'] is true
-                filesToTrans.push(id)
-        if filesToTrans.length == 0
+        itemsToTrans =  []
+        for item in $scope.items
+            if item['selected']
+                itemsToTrans.push(item)
+        if itemsToTrans.length == 0
             notify.info(gettext('Please select at least one file!'))
             return
-        $uibModalInstance.close(response: 'accept', files: filesToTrans, bulkMode: bulkMode)
-
-    $scope.saveBulk = () ->
-        $uibModalInstance.close(response: 'accept', files: 'All', bulkMode: bulkMode)
+        $uibModalInstance.close(response: 'accept', items: itemsToTrans)
 
     $scope.close = () ->
         $uibModalInstance.dismiss()
 
-    $scope.share = () ->
-        $http.post('/api/lmn/session/trans-list-files', {user: senders[0]}).then (resp) ->
-            $scope.files = resp['data'][0]
-            $scope.filesList = resp['data'][1]
+    $scope.create_dir = (path) ->
+        messagebox.prompt(gettext('Directory name :'), '').then (msg) ->
+            new_path = $scope.current_path + '/' + msg.value
+            smbclient.createDirectory(new_path).then (data) ->
+                notify.success(new_path + gettext(' created '))
+                $scope.load_path($scope.current_path)
+            .catch (resp) ->
+                notify.error(gettext('Error during creating: '), resp.data.message)
 
-    $scope.collect = () ->
-        if bulkMode is 'false'
-            $http.post('/api/lmn/session/trans-list-files', {user: senders, subfolderPath: receivers[0]+'_'+sessionComment}).then (resp) ->
-                $scope.files = resp['data'][0]
-                $scope.filesList = resp['data'][1]
-
-    $scope.createDir = (path) ->
-        $http.post('/api/lmn/create-dir', {filepath: path})
-
-    $scope.removeFile = (file) ->
-        role = $scope.identity.profile.sophomorixRole
-        school = $scope.identity.profile.activeSchool
-        path = $scope.identity.profile.homeDirectory+'\\transfer\\'+file
+    $scope.delete_file = (path) ->
         messagebox.show({
-            text: gettext('Are you sure you want to delete permanently the file ' + file + '?'),
+            text: gettext('Are you sure you want to delete permanently the file ' + path + '?'),
             positive: gettext('Delete'),
             negative: gettext('Cancel')
         }).then () ->
-            $http.post('/api/lmn/smbclient/unlink', {path: path}).then (resp) ->
-                notify.success(gettext("File " + file + " removed"))
-                delete $scope.files['TREE'][file]
-                $scope.files['COUNT']['files'] = $scope.files['COUNT']['files'] - 1
-                pos = $scope.filesList.indexOf(file)
-                $scope.filesList.splice(pos, 1)
+            smbclient.delete_file(path).then (data) ->
+                notify.success(path + gettext(' deleted !'))
+                $scope.load_path($scope.current_path)
+            .catch (resp) ->
+                notify.error(gettext('Error during deleting : '), resp.data.message)
 
-    $scope.removeDir = (file) ->
-        role = $scope.identity.profile.sophomorixRole
-        school = $scope.identity.profile.activeSchool
-        path = '/srv/samba/schools/'+school+'/'+role+'/'+$scope.identity.user+'/transfer/'+file
+    $scope.delete_dir = (path) ->
         messagebox.show({
-            text: gettext('Are you sure you want to delete permanently this directory and its content: ' + file + '?'),
+            text: gettext('Are you sure you want to delete permanently the directory ' + path + '?'),
             positive: gettext('Delete'),
             negative: gettext('Cancel')
         }).then () ->
-            $http.post('/api/lmn/remove-dir', {filepath: path}).then (resp) ->
-                notify.success(gettext("Directory " + file + " removed"))
-                delete $scope.files['TREE'][file]
-                $scope.files['COUNT']['files'] = $scope.files['COUNT']['files'] - 1
-                pos = $scope.filesList.indexOf(file)
-                $scope.filesList.splice(pos, 1)
+            smbclient.delete_dir(path).then (data) ->
+                notify.success(path + gettext(' deleted !'))
+                $scope.load_path($scope.current_path)
+            .catch (resp) ->
+                notify.error(gettext('Error during deleting : '), resp.data.message)
 
-    $scope.setTransferPath($scope.identity.user)
-    if action is 'share'
-        $scope.share()
-    else
-        $scope.collect()
+
+    $scope.rename = (item) ->
+        old_path = item.path
+        messagebox.prompt(gettext('New name :'), item.name).then (msg) ->
+            new_path = $scope.current_path + '/' + msg.value
+            smbclient.move(old_path, new_path).then (data) ->
+                notify.success(old_path + gettext(' renamed to ') + new_path)
+                $scope.load_path($scope.current_path)
+            .catch (resp) ->
+                notify.error(gettext('Error during renaming: '), resp.data.message)
+
+    $scope.areUploadsFinished = () ->
+        numUploads = $scope.uploadProgress.length
+        if numUploads == 0
+            return true
+
+        globalProgress = 0
+        for p in $scope.uploadProgress
+            globalProgress += p.progress
+
+        return numUploads * 100 == globalProgress
+
+    $scope.sambaSharesUploadBegin = ($flow) ->
+        $scope.uploadProgress = []
+        $scope.uploadFiles = []
+        for file in $flow.files
+            $scope.uploadFiles.push(file.name)
+
+        $scope.files_list = $scope.uploadFiles.join(', ')
+        smbclient.startFlowUpload($flow, $scope.current_path).then (resp) ->
+            notify.success(gettext('Uploaded ') + $scope.files_list)
+            $scope.load_path($scope.current_path)
+        , null, (progress) ->
+            $scope.uploadProgress = progress.sort((a, b) -> a.name > b.name)

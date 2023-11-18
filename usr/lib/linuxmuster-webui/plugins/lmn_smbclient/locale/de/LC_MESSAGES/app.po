@@ -2,7 +2,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: linuxmusternet\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2023-07-02 16:53+0200\n"
+"POT-Creation-Date: 2023-11-14 15:37+0100\n"
 "PO-Revision-Date: 2023-08-03 13:02\n"
 "Last-Translator: \n"
 "Language-Team: German\n"
@@ -17,10 +17,6 @@ msgstr ""
 "X-Crowdin-File: /2.0/lmn_smbclient.po\n"
 "X-Crowdin-File-ID: 226\n"
 
-#: usr/lib/linuxmuster-webui/plugins/lmn_smbclient/tasks.py:9
-msgid "Delete Samba files"
-msgstr "Samba-Dateien löschen"
-
 #: usr/lib/linuxmuster-webui/plugins/lmn_smbclient/views/smbclient.py:562
 msgid "Ticket successfully refreshed"
 msgstr "Ticket erfolgreich aktualisiert"
@@ -33,11 +29,13 @@ msgstr "Timeout beim Versuch, ein Kerberos-Ticket zu erhalten"
 msgid "Uploaded "
 msgstr "Upload erfolgreich "
 
-#: usr/lib/linuxmuster-webui/plugins/lmn_smbclient/resources/js/services/smbclient.service.es:16
+#: usr/lib/linuxmuster-webui/plugins/lmn_smbclient/resources/js/services/smbclient.service.es:17
 msgid " moved!"
 msgstr " verschoben!"
 
-#: usr/lib/linuxmuster-webui/plugins/lmn_smbclient/resources/js/services/smbclient.service.es:25
+#: usr/lib/linuxmuster-webui/plugins/lmn_smbclient/resources/js/services/smbclient.service.es:28
 msgid " copied!"
 msgstr " kopiert!"
 
+#~ msgid "Delete Samba files"
+#~ msgstr "Samba-Dateien löschen"

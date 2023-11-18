@@ -1,30 +1,38 @@
-.changed{
-    color:green !important;
-    background-color:yellow !important;
+$theme-color: #233c4c;
+$theme-color-weak: #ABDEFF;
+$theme-color-orange:#ff8f00 ;
+$theme-color-orange-weak: #ffab40;
+$theme-color-orange-light: #ffecd3;
+
+.session_container_list {
+    display: flex;
+    flex-wrap: wrap;
+
+    > div {
+        text-align: left;
+        margin-left: 25px;
+        width: 120px;
+        height: 120px;
+    }
+
+    > .list-group-item {
+        border: solid 1px $theme-color;
+        border-radius: 5px;
+    }
 }
 
-
-
-.class-img-container{
-position:relative;
+.session_container {
+  padding-top: 5px;
 }
 
-.class-img-container .btn{
-  position: absolute;
-  bottom: 0;
-  right: 0;
+.session-flex-item {
+  margin-bottom:10px;
+
+  &:hover {
+    background-color:$theme-color-orange-light;
+    color:$theme-color;
+  }
 }
-
-// TODO: Possible remove?
-//.messagebox{
-//    z-index: 1050;
-//}
-//
-//.animate-modal{
-//    z-index: 1100;
-//}
-
-// Session Module style
 
 body::after{
    position:absolute; width:0; height:0; overflow:hidden; z-index:-1;
@@ -121,3 +129,5 @@ body::after{
   top: 55px;
   left: 60px;
 }
+
+

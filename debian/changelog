@@ -1,3 +1,17 @@
+linuxmuster-webui7 (17.2.24-testing) lmn72-testing; urgency=medium
+
+  * Partially moving to linuxmuster-tools (new dependency)
+  * A lot of fix and view improvements
+  * [landingpage] Option to hide webdav box
+  * [session_new] Exam mode, share, collect, upload, list files
+  * [linbo4] Format with partition command
+  * [linbo4] Fix backup restore error
+  * [quota] Quota check per user
+  * [samba_shares] Fix missing projects and iso shares
+  * [session_new] Better design
+
+ -- Lukas Spitznagel <lukas.spitznagel@netzint.de>  Sat, 18 Niv 2023 16:32:02 +0200
+
 linuxmuster-webui7 (17.2.23) lmn72-testing; urgency=low
 
   * Merge 7.2.23 to 17.2.23
@@ -31,6 +45,25 @@ linuxmuster-webui7 (17.2.22) lmn72; urgency=low
 
  -- Andreas Till <andreas.till@netzint.de>  Mon, 07 Aug 2023 18:20:08 +0200
  
+linuxmuster-webui7 (7.2.25-testinh) lmn72-testing; urgency=medium
+
+  * [session_new] Better design
+
+ -- Arnaud Kientz <arnaud@linuxmuster.net>  Tue, 14 Nov 2023 15:34:46 +0100
+
+linuxmuster-webui7 (7.2.24-testing) lmn72-testing; urgency=medium
+
+  * Partially moving to linuxmuster-tools (new dependency)
+  * A lot of fix and view improvements
+  * [landingpage] Option to hide webdav box
+  * [session_new] Exam mode, share, collect, upload, list files
+  * [linbo4] Format with partition command
+  * [linbo4] Fix backup restore error
+  * [quota] Quota check per user
+  * [samba_shares] Fix missing projects and iso shares
+
+ -- Arnaud Kientz <arnaud@linuxmuster.net>  Thu, 09 Nov 2023 14:43:26 +0100
+
 linuxmuster-webui7 (7.2.23) lmn72; urgency=medium
 
   * Upgrade Ajenti 2.2.7
