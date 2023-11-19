@@ -9,8 +9,10 @@ linuxmuster-webui7 (17.2.24-testing) lmn72-testing; urgency=medium
   * [quota] Quota check per user
   * [samba_shares] Fix missing projects and iso shares
   * [session_new] Better design
+  * Widescreen as default display.
+  * [session-new] Fix some errors and design issues.
 
- -- Lukas Spitznagel <lukas.spitznagel@netzint.de>  Sat, 18 Niv 2023 16:32:02 +0200
+ -- Lukas Spitznagel <lukas.spitznagel@netzint.de>  Sat, 19 Nov 2023 16:32:02 +0200
 
 linuxmuster-webui7 (17.2.23) lmn72-testing; urgency=low
 
@@ -45,6 +47,13 @@ linuxmuster-webui7 (17.2.22) lmn72; urgency=low
 
  -- Andreas Till <andreas.till@netzint.de>  Mon, 07 Aug 2023 18:20:08 +0200
  
+linuxmuster-webui7 (7.2.26-testing) lmn72; urgency=medium
+
+  * Widescreen as default display.
+  * [session-new] Fix some errors and design issues.
+
+ -- Arnaud Kientz <arnaud@linuxmuster.net>  Sat, 18 Nov 2023 22:42:39 +0100
+
 linuxmuster-webui7 (7.2.25-testinh) lmn72-testing; urgency=medium
 
   * [session_new] Better design

@@ -158,7 +158,13 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
     $scope._updateFileList = (participant) ->
         if participant.files != 'ERROR' and participant.files != 'ERROR-teacher'
             path = "#{participant.homeDirectory}\\transfer\\#{$scope.identity.user}\\_collect"
-            smbclient.list(path).then((data) -> participant.files = data.items)
+            smbclient.list(path).then((data) ->
+                participant.files = data.items
+            ).catch((err) ->
+                # Working directory probably deleted, trying to recreate it
+                lmnSession._createWorkingDirectory(participant)
+                notify.error(gettext("Can not list directory from ") + participant.displayName)
+            )
 
     $scope.updateFileList = () ->
         for participant in $scope.session.members
@@ -192,7 +198,7 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
 
         for participant in $scope.session.members
             # Only change management group for student, and not others teachers
-            if participant.sophomorixRole == 'student'
+            if participant.sophomorixRole == 'student' or participant.sophomorixRole == 'examuser'
                 participant[group] = $scope.management[group]
                 usersList.push(participant.sAMAccountName)
 
@@ -272,11 +278,16 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
     $scope.startExam = () ->
         # End exam for a whole group
         $scope.stateChanged = true
-        $http.patch("/api/lmn/session/exam/start", {session: $scope.session}).then (resp) ->
-            $scope.examMode = true
-            $scope.stateChanged = false
-            lmnSession.getExamUsers()
-            $scope.stopRefreshFiles()
+        messagebox.show({
+            text: gettext('Do you really want to start a new exam?'),
+            positive: gettext('Start exam mode'),
+            negative: gettext('Cancel')
+        }).then () ->
+            $http.patch("/api/lmn/session/exam/start", {session: $scope.session}).then (resp) ->
+                $scope.examMode = true
+                $scope.stateChanged = false
+                lmnSession.getExamUsers()
+                $scope.stopRefreshFiles()
 
     $scope.stopExam = () ->
         # End exam for a whole group

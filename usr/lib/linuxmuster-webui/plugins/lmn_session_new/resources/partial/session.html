@@ -101,40 +101,39 @@
             <th style="text-align:center;">
                 <div translate>Transfer</div>
             </th>
-            <th style="text-align:center;">
-                <div translate>Exam</div>
-                <button ng:click="startExam()" class="btn btn-lmn-success-inv"
-                        ng:if="!examMode && extExamUsers.length + examUsers.length == 0 && session.type != 'room'">
-                    <i class="fas fa-play"></i>
-                </button>
-                <button ng:click="stopRunningExams()" class="btn btn-lmn-danger-inv"
-                        ng:if="!examMode && extExamUsers.length + examUsers.length > 0" translate>
-                    <i class="fas fa-stop"></i>
-                </button>
-                <button ng:click="stopExam()" class="btn btn-lmn-danger-inv" ng:if="examMode" translate>
-                    <i class="fas fa-stop"></i>
-                </button>
+            <th style="text-align:center;border-right:None;">
+                <span translate>Working directory</span>
+                <br /><br />
+                <span class="label label-default" style="font-size:12px;">
+                    transfer/{{identity.user}}/_collect
+                </span>
             </th>
-            <th style="text-align:center;">
-                <div style="float:left;">
-                    <span translate>Working directory</span>
-                    <br /><br />
-                    <span class="label label-default" style="font-size:12px;">
-                        transfer/{{identity.user}}/_collect
-                    </span>
-                </div>
-                <button class="btn btn-default pull-right"
+            <th style="text-align:center;border-left:None;">
+                <button class="btn btn-default"
                         ng:click="startRefreshFiles()"
                         ng:show="!autorefresh_files"
                 >
                     <i class="fas fa-sync"></i>
                 </button>
-                <button class="btn btn-default pull-right" ng:click="stopRefreshFiles()" ng:show="autorefresh_files">
+                <button class="btn btn-default" ng:click="stopRefreshFiles()" ng:show="autorefresh_files">
                     <i class="fas fa-sync fa-spin"></i>
                 </button>
             </th>
             <th style="text-align:center;">
-                <button class="btn" ng:click="setManagementGroupAll('wifi')"
+                <button ng:click="startExam()" class="btn btn-default" title="Start exam mode"
+                        ng:if="!examMode && extExamUsers.length + examUsers.length == 0 && session.type != 'room'" style="font-size:20px;">
+                    <i class="fa fa-graduation-cap"></i>
+                </button>
+                <button ng:click="stopRunningExams()" class="btn btn-lmn-danger-inv" title="Stop exam mode"
+                        ng:if="!examMode && extExamUsers.length + examUsers.length > 0"  style="font-size:20px;">
+                    <i class="fa fa-graduation-cap"></i>
+                </button>
+                <button ng:click="stopExam()" class="btn btn-lmn-danger-inv" ng:if="examMode" title="Stop exam mode" style="font-size:20px;">
+                    <i class="fa fa-graduation-cap"></i>
+                </button>
+            </th>
+            <th style="text-align:center;">
+                <button class="btn" ng:click="setManagementGroupAll('wifi')" title="Toggle wifi for all"
                         ng:class="{
                         'btn-lmn-success-inv': (session.members | filter:{wifi: true}).length == session.members.length,
                         'btn-lmn-danger-inv': (session.members | filter:{wifi: true}).length == 0,
@@ -144,7 +143,7 @@
                 </button>
             </th>
             <th style="text-align:center;">
-                <button class="btn" ng:click="setManagementGroupAll('internet')"
+                <button class="btn" ng:click="setManagementGroupAll('internet')" title="Toggle internet for all"
                         ng:class="{
                         'btn-lmn-success-inv': (session.members | filter:{internet: true}).length == session.members.length,
                         'btn-lmn-danger-inv': (session.members | filter:{internet: true}).length == 0,
@@ -154,7 +153,7 @@
                 </button>
             </th>
             <th style="text-align:center;">
-                <button class="btn" ng:click="setManagementGroupAll('printing')"
+                <button class="btn" ng:click="setManagementGroupAll('printing')" title="Toggle printer for all"
                         ng:class="{
                         'btn-lmn-success-inv': (session.members | filter:{printing: true}).length == session.members.length,
                         'btn-lmn-danger-inv': (session.members | filter:{printing: true}).length == 0,
@@ -211,21 +210,7 @@
                 </div>
             </td>
 
-            <td class="ng-binding" ng:show="isStudent(participant)">
-                <div ng:show="participant.sophomorixExamMode != '---'">
-                    <a style="display:inline-block; width:80px; font-size:100%"
-                       class="btn btn-danger"
-                       ng:click="stopUserExam(participant)"
-                       title="Stop exam from {{participant.sophomorixExamMode[0]}}"
-                    >
-                        <i class="fa fa-graduation-cap"></i>
-                        {{participant.sophomorixExamMode[0]}}
-<!--                        <i class="fas fa-stop pull-right"></i>-->
-                    </a>
-                </div>
-            </td>
-
-            <td ng:show="isStudent(participant)">
+            <td ng:show="isStudent(participant)" colspan="2">
                 <div ng:if="participant.files == 'ERROR'" style="width:220px;">
                     <a style="inline-block" class="btn btn-danger" ng:click="fixMembership()">
                         <span translate>Join {{missing_schoolclasses}} to share</span>
@@ -243,6 +228,20 @@
                             <span class="subtle">{{item.size|bytes}}</span>
                         </span>
                     </div>
+                </div>
+            </td>
+
+            <td class="ng-binding" ng:show="isStudent(participant)">
+                <div ng:show="participant.sophomorixExamMode != '---'" style="text-align: center;">
+                    <a style="display:inline-block; width:80px; font-size:100%"
+                       class="btn btn-danger"
+                       ng:click="stopUserExam(participant)"
+                       title="Stop exam from {{participant.sophomorixExamMode[0]}}"
+                    >
+                        <i class="fa fa-graduation-cap"></i>
+                        {{participant.sophomorixExamMode[0]}}
+                        <!--                        <i class="fas fa-stop pull-right"></i>-->
+                    </a>
                 </div>
             </td>
 
