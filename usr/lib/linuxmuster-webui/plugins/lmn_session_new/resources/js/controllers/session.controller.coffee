@@ -127,7 +127,7 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
             for user in lmnSession.user_missing_membership
                 position = $scope.session.members.indexOf(user)
                 $scope.session.members[position].files = []
-                lmnSession._createWorkingDirectory(user)
+                lmnSession.createWorkingDirectory([user])
             identity.init().then () ->
                 console.log("Identity renewed !")
                 $scope.missing_schoolclasses = []
@@ -165,7 +165,7 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
                 participant.files = data.items
             ).catch((err) ->
                 # Working directory probably deleted, trying to recreate it
-                lmnSession._createWorkingDirectory(participant)
+                lmnSession.createWorkingDirectory([participant])
                 notify.error(gettext("Can not list directory from ") + participant.displayName)
             )
 
@@ -190,9 +190,13 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
         if participant[group] == true
             group = "no#{group}"
         user = [participant.sAMAccountName]
-        $http.post('/api/lmn/managementgroup', {group:group, users:user}).then (resp) ->
+        $http.post('/api/lmn/managementgroup', {group:group, users:user}).then((resp) ->
             notify.success("Group #{group} changed for #{user[0]}")
             $scope.stateChanged = false
+        ).catch((err) ->
+            notify.error(err.data.message)
+            $scope.stateChanged = false
+        )
 
     $scope.setManagementGroupAll = (group) ->
         $scope.stateChanged = true
@@ -208,9 +212,13 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
         if $scope.management[group] == false
             group = "no#{group}"
 
-        $http.post('/api/lmn/managementgroup', {group:group, users:usersList}).then (resp) ->
+        $http.post('/api/lmn/managementgroup', {group:group, users:usersList}).then((resp) ->
             notify.success("Group #{group} changed for #{usersList.join()}")
             $scope.stateChanged = false
+        ).catch((err) ->
+            notify.error(err.data.message)
+            $scope.stateChanged = false
+        )
 
     # Manage session
 

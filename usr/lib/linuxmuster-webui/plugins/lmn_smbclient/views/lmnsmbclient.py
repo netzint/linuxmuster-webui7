@@ -31,13 +31,13 @@ from aj.plugins.lmn_common.mimetypes import content_mimetypes, content_filetypes
 def credit_wrapper(func):
     def new_func(*args, **kwargs):
         retry = 0
-        while retry < 5:
+        while retry < 10:
             try:
                 return func(*args, **kwargs)
             except SMBException as e:
                 if '0 credits are available' in str(e):
                     retry += 1
-                    gevent.sleep(0.1)
+                    gevent.sleep(2)
                 else:
                     raise
         # 5 attempts was not enough ?
@@ -512,8 +512,12 @@ class Handler(HttpPlugin):
                     with smbclient.open_file(chunk_file, mode='rb') as chunk:
                         f.write(chunk.read())
                     smbclient.remove(chunk_file)
-
-            smbclient.rmdir(chunk_dir)
+            
+            try:
+                smbclient.rmdir(chunk_dir)
+            except AttributeError as e:
+                # See https://github.com/jborean93/smbprotocol/issues/269
+                logging.warning(f"Was not able to delete {chunk_dir}, bug of smbprotocol ?")
 
             targets.append({
                 'name': name,
@@ -595,27 +599,36 @@ class Handler(HttpPlugin):
         Create a working directory for each user in a session with path `user/transfer/TEACHERNAME/_collect`.
         """
 
-        user = http_context.json_body()['user']
-        if user.endswith('-exam'):
-            user_data = self.context.ldapreader.get(f'/users/exam/'
-                                                    f'{user}', attributes=['homeDirectory', 'sophomorixAdminClass'])
-        else:
-            user_data = self.context.ldapreader.get(f'/users/{user}', attributes=['homeDirectory', 'sophomorixAdminClass'])
-        homeDirectory, schoolclass = user_data['homeDirectory'], user_data['sophomorixAdminClass']
-        path = f'{homeDirectory}/transfer/{self.context.identity}/_collect'
+        users = http_context.json_body()['users']
+        if isinstance(users, str):
+            users = [users]
 
-        try:
-            if not smbclient.path.isdir(path):
-                smbclient.makedirs(path)
-        except SMBOSError as e:
-            if 'NtStatus 0xc0000035' in str(e):
-                pass # Should not appear again
-            elif 'STATUS_ACCESS_DENIED' in str(e):
-                raise EndpointError(e, message=f"{self.context.identity} is not member of the group {schoolclass}.")
+        errors = {}
+
+        for user in users:
+            if user.endswith('-exam'):
+                user_data = self.context.ldapreader.get(f'/users/exam/'
+                                                        f'{user}', attributes=['homeDirectory', 'sophomorixAdminClass', 'sophomorixRole'])
             else:
-                raise EndpointError(e)
-        except (ValueError, NotFound) as e:
-            raise EndpointError(e)
-        except InvalidParameter as e:
-            raise EndpointError(f'Problem with path {path} : {e}')
+                user_data = self.context.ldapreader.get(f'/users/{user}', attributes=['homeDirectory', 'sophomorixAdminClass', 'sophomorixRole'])
+
+            homeDirectory, schoolclass = user_data['homeDirectory'], user_data['sophomorixAdminClass']
+            path = f'{homeDirectory}/transfer/{self.context.identity}/_collect'
+
+            try:
+                if not smbclient.path.isdir(path):
+                    smbclient.makedirs(path)
+            except SMBOSError as e:
+                if 'NtStatus 0xc0000035' in str(e):
+                    pass # Should not appear again
+                elif 'STATUS_ACCESS_DENIED' in str(e):
+                    errors[user] = f"{self.context.identity} is not member of the group {schoolclass}."
+                else:
+                    errors[user] = e
+            except (ValueError, NotFound) as e:
+                errors[user] = e
+            except InvalidParameter as e:
+                errors[user] = f'Problem with path {path} : {e}'
+
+        return errors
 

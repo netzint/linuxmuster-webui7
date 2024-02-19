@@ -1,3 +1,9 @@
+linuxmuster-webui7 (17.2.42) lmn72-testing; urgency=medium
+
+  * Merge new commit from linuxmuster.net
+
+ -- Lukas Spitznagel <lukas.spitznagel@netzint.de>  Mon, 19 Feb 2024 21:45:02 +0200
+
 linuxmuster-webui7 (17.2.33) lmn72-testing; urgency=medium
 
   * Merge new commit from linuxmuster.net
@@ -74,6 +80,66 @@ linuxmuster-webui7 (17.2.22) lmn72; urgency=low
 
  -- Andreas Till <andreas.till@netzint.de>  Mon, 07 Aug 2023 18:20:08 +0200
  
+linuxmuster-webui7 (7.2.42) lmn72; urgency=medium
+
+  * [users] Add permissions for exam users passwords. 
+
+ -- Arnaud Kientz <arnaud@linuxmuster.net>  Sat, 17 Feb 2024 20:51:44 +0100
+
+linuxmuster-webui7 (7.2.41) lmn72; urgency=medium
+
+  * [quota] Fix student-teacher order.
+
+ -- Arnaud Kientz <arnaud@linuxmuster.net>  Wed, 14 Feb 2024 16:55:23 +0100
+
+linuxmuster-webui7 (7.2.40) lmn72; urgency=medium
+
+  * Avoid setting ACLs on webuiUpload folder when not configured 
+
+ -- Arnaud Kientz <arnaud@linuxmuster.net>  Wed, 14 Feb 2024 14:00:59 +0100
+
+linuxmuster-webui7 (7.2.39) lmn72; urgency=medium
+
+  * [users] Harden access on passwords reset 
+
+ -- Arnaud Kientz <arnaud@linuxmuster.net>  Wed, 14 Feb 2024 11:58:55 +0100
+
+linuxmuster-webui7 (7.2.38) lmn72; urgency=medium
+
+  * [smbclient] Fix rmdir.
+  * [smbclient] Switching createWorkingDirectory to sequential. 
+
+ -- Arnaud Kientz <arnaud@linuxmuster.net>  Tue, 13 Feb 2024 18:59:25 +0100
+
+linuxmuster-webui7 (7.2.37) lmn72; urgency=medium
+
+  * [smbclient] Bring back projects
+  * [smbclient] Catch _delete problem in smbprotocol 
+
+ -- Arnaud Kientz <arnaud@linuxmuster.net>  Tue, 13 Feb 2024 10:54:38 +0100
+
+linuxmuster-webui7 (7.2.36) lmn72; urgency=medium
+
+  * [session] Fix lmntools-managementgroup path
+  * [webdav] Fix samba netbios path
+  * [webdav] Remove deprecated projects share. 
+
+ -- Arnaud Kientz <arnaud@linuxmuster.net>  Mon, 12 Feb 2024 10:12:06 +0100
+
+linuxmuster-webui7 (7.2.35) lmn72; urgency=medium
+
+  * [session] Use group manager 
+  * [smbclient] Add some delay and attempts
+
+ -- Arnaud Kientz <arnaud@linuxmuster.net>  Thu, 08 Feb 2024 13:16:34 +0100
+
+linuxmuster-webui7 (7.2.34) lmn72; urgency=medium
+
+  * Update session list plugin.
+  * Security fixes in device manager and common. 
+
+ -- Arnaud Kientz <arnaud@linuxmuster.net>  Mon, 05 Feb 2024 20:34:46 +0100
+
 linuxmuster-webui7 (7.2.33) lmn72; urgency=medium
 
   * Security fixes in common and quota. 

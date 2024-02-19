@@ -18,19 +18,44 @@ class Handler(HttpPlugin):
         self.context = context
 
     def _checkPasswordPermissions(self, http_context, user):
+
+        role_rank = {
+            'globaladministrator': 4,
+            'schooladministrator': 3,
+            'teacher': 2,
+            'student': 1,
+            'examuser': 1,
+        }
+
         identity = self.context.identity
-        identity_role = AuthenticationService.get(self.context).get_provider().get_profile(identity)['sophomorixRole']
+        identity_role = self.context.ldapreader.getval(f'/users/{identity}', 'sophomorixRole')
 
+        # Global admins have all rights
         if identity_role == 'globaladministrator':
-            return
+            return True
 
-        user_role = AuthenticationService.get(self.context).get_provider().get_profile(user)['sophomorixRole']
+        if user.endswith('-exam'):
+            user_role = "examuser"
+        else:
+            user_role = self.context.ldapreader.getval(f'/users/{user}', 'sophomorixRole')
 
-        # Some additional security checks
+        ## Some additional security checks
+        # Access forbidden for students
         if identity_role not in ['teacher', 'schooladministrator']:
-            return http_context.respond_forbidden()
-        if identity_role == user_role and identity != user:
-            return http_context.respond_forbidden()
+            return False
+
+        # Same role but other user -> access forbidden
+        if identity_role == user_role:
+            # User can only change its own password, not from someone else with the same role
+            if identity != user:
+                return False
+        else:
+            # Check if the role rank of the user is greater than the user logged in
+            # If the role of the user can not be found, access forbidden
+            if role_rank.get(user_role, 5) > role_rank[identity_role]:
+                return False
+
+        return True
 
     @get(r'/api/lmn/users/passwords/(?P<user>[^/]+)')
     @authorize('lm:users:passwords')
@@ -45,7 +70,8 @@ class Handler(HttpPlugin):
         :rtype: dict
         """
 
-        self._checkPasswordPermissions(http_context, user)
+        if not self._checkPasswordPermissions(http_context, user):
+            return http_context.respond_forbidden()
 
         sophomorixCommand = ['sophomorix-user', '--info', '-jj', '-u', user]
         return lmn_getSophomorixValue(sophomorixCommand, '/USERS/'+user+'/sophomorixFirstPassword')
@@ -65,7 +91,9 @@ class Handler(HttpPlugin):
 
         users = http_context.json_body()['users']
         for user in users.split(','):
-            self._checkPasswordPermissions(http_context, user)
+            # If one user fails the test, responding forbidden
+            if not self._checkPasswordPermissions(http_context, user):
+                return http_context.respond_forbidden()
 
         sophomorixCommand = ['sophomorix-passwd', '--set-firstpassword', '-jj', '-u', users, '--use-smbpasswd']
         return lmn_getSophomorixValue(sophomorixCommand, 'COMMENT_EN')
@@ -85,7 +113,9 @@ class Handler(HttpPlugin):
 
         users = http_context.json_body()['users']
         for user in users.split(','):
-            self._checkPasswordPermissions(http_context, user)
+            # If one user fails the test, responding forbidden
+            if not self._checkPasswordPermissions(http_context, user):
+                return http_context.respond_forbidden()
 
         # TODO: Password length should be read from school settings
         password_length = '8'
@@ -109,7 +139,9 @@ class Handler(HttpPlugin):
         password = http_context.json_body()['password']
 
         for user in users.split(','):
-            self._checkPasswordPermissions(http_context, user)
+            # If one user fails the test, responding forbidden
+            if not self._checkPasswordPermissions(http_context, user):
+                return http_context.respond_forbidden()
 
         sophomorixCommand = ['sophomorix-passwd', '-u', users, '--pass', password, '-jj', '--use-smbpasswd']
         return lmn_getSophomorixValue(sophomorixCommand, 'COMMENT_EN', sensitive=True)
@@ -131,7 +163,9 @@ class Handler(HttpPlugin):
         password = http_context.json_body()['password']
 
         for user in users.split(','):
-            self._checkPasswordPermissions(http_context, user)
+            # If one user fails the test, responding forbidden
+            if not self._checkPasswordPermissions(http_context, user):
+                return http_context.respond_forbidden()
 
         sophomorixCommand = ['sophomorix-passwd', '-u', users, '--pass', password, '--nofirstpassupdate', '--hide', '-jj', '--use-smbpasswd']
         return lmn_getSophomorixValue(sophomorixCommand, 'COMMENT_EN', sensitive=True)
@@ -304,7 +338,8 @@ class Handler(HttpPlugin):
         :rtype: bool
         """
 
-        self._checkPasswordPermissions(http_context, user)
+        if not self._checkPasswordPermissions(http_context, user):
+            return http_context.respond_forbidden()
 
         line = subprocess.check_output(['sudo', 'sophomorix-passwd', '--test-firstpassword', '-u', user]).splitlines()[-4]
         return b'1 OK' in line
