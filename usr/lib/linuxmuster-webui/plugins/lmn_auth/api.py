@@ -87,10 +87,10 @@ class LMAuthenticationProvider(AuthenticationProvider):
         # Permissions for kerberos ticket
         uid = self.get_isolation_uid(username)
 
-        if os.path.isfile(f'/tmp/krb5cc_{uid}'):
-            os.unlink(f'/tmp/krb5cc_{uid}')
-
         if os.path.isfile(f'/tmp/krb5cc_{uid}{uid}'):
+            if os.path.isfile(f'/tmp/krb5cc_{uid}'):
+                os.unlink(f'/tmp/krb5cc_{uid}')
+
             os.rename(f'/tmp/krb5cc_{uid}{uid}', f'/tmp/krb5cc_{uid}')
             logging.warning(f"Changing kerberos ticket rights for {username}")
             os.chown(f'/tmp/krb5cc_{uid}', uid, 100)
@@ -117,7 +117,7 @@ class LMAuthenticationProvider(AuthenticationProvider):
         krb_cache = f'/tmp/krb5cc_{uid}{uid}'
 
         try:
-            subprocess.check_call(["klist", "-s", krb_cache])
+            subprocess.check_call(["klist", "-s", f'/tmp/krb5cc_{uid}'])
             return
         except subprocess.CalledProcessError as e:
             # Kerberos ticket not available, continuing
@@ -188,6 +188,9 @@ class LMAuthenticationProvider(AuthenticationProvider):
             userAttrs = self.get_ldap_user(username, attributes=['dn', 'sophomorixWebuiPermissionsCalculated', 'permissions'])
             if not userAttrs or not userAttrs.get('dn', ''):
                 return False
+            # TODO authorize access to exam users ?
+            # if userAttrs.get('sophomorixRole', '') == 'examuser':
+            #     return False
         except KeyError as e:
             return False
 

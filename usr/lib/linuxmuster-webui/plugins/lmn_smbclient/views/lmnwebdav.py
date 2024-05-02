@@ -3,8 +3,11 @@ Tools to handle files, directories and uploads.
 """
 
 import os
+import tempfile
 from urllib.parse import quote, unquote
 import locale
+from zipfile import ZipFile
+
 import gevent
 import smbclient
 import logging
@@ -23,6 +26,7 @@ from aj.auth import authorize, AuthenticationService
 from aj.plugins.lmn_common.mimetypes import content_mimetypes
 from aj.plugins.lmn_common.api import samba_realm, samba_netbios
 from aj.plugins.lmn_smbclient.davxml import WebdavXMLResponse
+from linuxmusterTools.quotas import samba_root_tree
 
 
 # Wrapper for smbclient methods in order to avoid empty credits error
@@ -55,6 +59,11 @@ class Handler(HttpPlugin):
         # Dirty fix for it
         return path.encode('latin-1').decode('utf-8')
 
+    @get(r'/api/webdav/list')
+    @endpoint(api=True)
+    def handle_full_files_list(self, http_context):
+        return samba_root_tree(self.context.identity)
+
     @get(r'/webdav/(?P<path>.*)')
     @endpoint(page=True)
     def handle_api_webdav_get(self, http_context, path=''):
@@ -69,10 +78,11 @@ class Handler(HttpPlugin):
         smb_path = f'{self.context.schoolmgr.schoolShare}{smb_path}'
 
         try:
-            smbclient.path.isfile(smb_path)
+            isfile = smbclient.path.isfile(smb_path)
+            isdir = smbclient.path.isdir(smb_path)
             # Head request to handle 404
             if http_context.method == 'HEAD':
-                if smbclient.path.isfile(smb_path) or smbclient.path.isdir(smb_path):
+                if isfile or isdir:
                     http_context.respond_ok()
                     return ''
                 else:
@@ -81,6 +91,22 @@ class Handler(HttpPlugin):
         except (ValueError, SMBOSError, NotFound):
             http_context.respond_not_found()
             return ''
+
+        if isdir:
+            zip_name = f'{quote(name)}.zip'
+            tmp_dir = tempfile.mkdtemp()
+            zip_path = f'{tmp_dir}/{zip_name}'
+
+            with ZipFile(zip_path, 'w') as zip_obj:
+                for root, folders, files in smbclient.walk(smb_path):
+                    for f in files:
+                        relative_path = root.replace(path, '').replace('\\', '/')[1:]
+                        relative_path = f"{relative_path}/{f}"
+                        smb_file_path = f"{root}\\{f}"
+                        with smbclient.open_file(smb_file_path, 'rb') as file_io:
+                            content = file_io.read()
+                        zip_obj.writestr(relative_path, content)
+            ext = '.zip'
 
         if ext in content_mimetypes:
             http_context.add_header('Content-Type', content_mimetypes[ext])
@@ -92,7 +118,10 @@ class Handler(HttpPlugin):
 
         try:
             if http_range and http_range.startswith('bytes'):
-                rsize = smbclient.stat(smb_path).st_size
+                if isdir:
+                    rsize = os.stat(zip_path).st_size
+                else:
+                    rsize = smbclient.stat(smb_path).st_size
                 range_from, range_to = http_range.split('=')[1].split('-')
                 range_from = int(range_from) if range_from else 0
                 range_to = int(range_to) if range_to else (rsize - 1)
@@ -108,10 +137,15 @@ class Handler(HttpPlugin):
             else:
                 http_context.respond_ok()
 
-            http_context.add_header('Content-Disposition', (f'attachment; filename={quote(name)}'))
+            if isdir:
+                http_context.add_header('Content-Disposition', (f'attachment; filename={zip_name}'))
+                fd = open(zip_path, 'rb')
+                fd.seek(range_from or 0, os.SEEK_SET)
+            else:
+                http_context.add_header('Content-Disposition', (f'attachment; filename={quote(name)}'))
+                fd = smbclient._os.open_file(smb_path, 'rb')
+                fd.seek(range_from or 0, smbclient._os.os.SEEK_SET)
 
-            fd = smbclient._os.open_file(smb_path, 'rb')
-            fd.seek(range_from or 0, smbclient._os.os.SEEK_SET)
             bufsize = 100 * 1024
             read = range_from
             buf = 1
@@ -130,8 +164,14 @@ class Handler(HttpPlugin):
                 http_context.respond_forbidden()
             else:
                 http_context.respond_not_found()
+            if isdir:
+                os.unlink(zip_path)
+                os.rmdir(tmp_dir)
             return ''
 
+        if isdir:
+            os.unlink(zip_path)
+            os.rmdir(tmp_dir)
 
     @delete(r'/webdav/(?P<path>.*)')
     @endpoint()
@@ -209,20 +249,28 @@ class Handler(HttpPlugin):
             shares = self.context.schoolmgr.get_shares(user_context)
             for share in shares:
                 item = smbclient._os.SMBDirEntry.from_path(share['path'])
+                webdav_path = share['webdav_url']
 
-                item_path = share['path'].replace(samba_netbios, samba_realm)
-                item_path = item_path.replace(self.context.schoolmgr.schoolShare, '')
-                item_path = item_path.replace('\\', '/') # TODO
-
-                if share['name'] == "Home":
-                    item_path = item_path.rsplit('/', 1)[0]
-
-                href = quote(f'{baseUrl}{item_path}/', encoding='utf-8')
+                href = quote(f'{baseUrl}{webdav_path}/', encoding='utf-8')
                 items[href] = response.convert_samba_entry_properties(item)
                 items[href]['displayname'] = share['name']
         else:
             url_path = self._convert_path(path).replace('/', '\\')
-            smb_path = f"{self.context.schoolmgr.schoolShare}{url_path}"
+            if profil['sophomorixRole'] == 'globaladministrator':
+                if path.startswith('global/'):
+                    url_path = url_path.replace('global\\', '')
+                    smb_path = f"{self.context.schoolmgr.schoolGlobalShare}{url_path}"
+                else:
+                    # Surfing in the school
+                    # TODO: not working in multischool env
+                    url_path = '\\'.join(url_path.split('\\')[1:])
+                    smb_path = f"{self.context.schoolmgr.schoolShare}{url_path}"
+            elif profil['sophomorixRole'] == 'schooladministrator':
+                if path.startswith(self.context.schoolmgr.school):
+                    url_path = url_path.replace(f"{self.context.schoolmgr.school}", "")
+                smb_path = f"{self.context.schoolmgr.schoolShare}{url_path}"
+            else:
+                smb_path = f"{self.context.schoolmgr.schoolShare}{url_path}"
 
             try:
                 smb_entity = smbclient._os.SMBDirEntry.from_path(smb_path)

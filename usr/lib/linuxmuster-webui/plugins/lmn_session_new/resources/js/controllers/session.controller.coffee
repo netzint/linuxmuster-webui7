@@ -86,9 +86,10 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
         $scope.missing_schoolclasses = [... new Set($scope.missing_schoolclasses)].join(',')
 
     $scope.refreshUsers = () ->
-       lmnSession.refreshUsers().then () ->
+       return lmnSession.refreshUsers().then () ->
             $scope.extExamUsers = lmnSession.extExamUsers
             $scope.examUsers = lmnSession.examUsers
+            $scope.examMode = lmnSession.examMode
 
     if $scope.session.type == 'schoolclass'
         title = " > " + gettext("Schoolclass") + " #{$scope.session.name}"
@@ -139,6 +140,9 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
             if resp.data.usersList.length != 0
                 $http.post("/api/lmn/session/userinfo", {users:resp.data.usersList}).then (rp) ->
                     $scope.session.members = rp.data
+                    for userDetails in $scope.session.members
+                        user = userDetails.cn
+                        userDetails.computer = resp.data.objects[user].COMPUTER 
 
     $scope.stopRefreshParticipants = () ->
         if $scope.refresh_participants != undefined
@@ -158,20 +162,18 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
     $scope.get_file_icon = (filetype) ->
         return $scope.file_icon[filetype]
 
-    $scope._updateFileList = (participant) ->
-        if participant.files != 'ERROR' and participant.files != 'ERROR-teacher'
-            path = "#{participant.homeDirectory}\\transfer\\#{$scope.identity.user}\\_collect"
-            smbclient.list(path).then((data) ->
-                participant.files = data.items
-            ).catch((err) ->
-                # Working directory probably deleted, trying to recreate it
-                lmnSession.createWorkingDirectory([participant])
-                notify.error(gettext("Can not list directory from ") + participant.displayName)
-            )
-
     $scope.updateFileList = () ->
-        for participant in $scope.session.members
-            $scope._updateFileList(participant)
+        participants = $scope.session.members.filter((user) => user.files != 'ERROR' && user.files != 'ERROR-teacher');
+        $http.post('/api/lmn/smbclient/listCollectDir', {participants:participants}).then (resp) ->
+            for participant,files of resp.data
+                for user in $scope.session.members
+                    if user.cn == participant
+                        if (typeof files.items == 'undefined')
+                            # Error from backend
+                            notify.error(gettext("Can not list directory from ") + user.displayName + ": " + files)
+                        else
+                            user.files = files.items
+                        break
 
     $scope.stopRefreshFiles = () ->
         if $scope.refresh_files != undefined
@@ -292,31 +294,41 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
     # Exam mode
 
     $scope.startExam = () ->
+        if $scope.examMode
+            return
+
         # End exam for a whole group
         messagebox.show({
             text: gettext('Do you really want to start a new exam?'),
             positive: gettext('Start exam mode'),
             negative: gettext('Cancel')
         }).then () ->
+            wait.modal(gettext("Starting exam mode ..."), "spinner")
             $scope.stateChanged = true
+            $scope.examMode = true
             $http.patch("/api/lmn/session/exam/start", {session: $scope.session}).then (resp) ->
-                $scope.examMode = true
                 $scope.stateChanged = false
                 lmnSession.getExamUsers()
                 $scope.stopRefreshFiles()
+                $rootScope.$emit('updateWaiting', 'done')
 
     $scope.stopExam = () ->
+        if !$scope.examMode
+            return
+
         # End exam for a whole group
         messagebox.show({
             text: gettext('Do you really want to end the current exam?'),
             positive: gettext('End exam mode'),
             negative: gettext('Cancel')
         }).then () ->
+            wait.modal(gettext("Stopping exam mode ..."), "spinner")
             $scope.stateChanged = true
+            $scope.examMode = false
             $http.patch("/api/lmn/session/exam/stop", {session: $scope.session}).then (resp) ->
                 $scope.refreshUsers()
-                $scope.examMode = false
                 $scope.stateChanged = false
+                $rootScope.$emit('updateWaiting', 'done')
             $scope.stopRefreshFiles()
 
     $scope._stopUserExam = (user) ->
@@ -335,9 +347,11 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
             positive: gettext('End exam mode'),
             negative: gettext('Cancel')
         }).then () ->
+            wait.modal(gettext("Stopping exam mode ..."), "spinner")
             $scope._stopUserExam(user).then () ->
-                $scope.refreshUsers()
-                notify.success(gettext('Exam mode stopped for user ') + user.displayName)
+                $scope.refreshUsers().then () ->
+                    $rootScope.$emit('updateWaiting', 'done')
+                    notify.success(gettext('Exam mode stopped for user ') + user.displayName)
 
     $scope.stopRunningExams = () ->
         # End all running extern exams (run by other teachers)
@@ -351,8 +365,10 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
                 promises.push($scope._stopUserExam(user))
             for user in $scope.examUsers
                 promises.push($scope._stopUserExam(user))
+            wait.modal(gettext("Stopping exam mode ..."), "spinner")
             $q.all(promises).then () ->
                 $scope.refreshUsers()
+                $rootScope.$emit('updateWaiting', 'done')
                 notify.success(gettext('Exam mode stopped for all users.'))
 
     $scope._checkExamUser = (username) ->
