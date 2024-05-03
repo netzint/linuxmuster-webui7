@@ -1,3 +1,9 @@
+linuxmuster-webui7 (17.2.50) lmn72-testing; urgency=medium
+
+  * Merge new commit from linuxmuster.net
+
+ -- Lukas Spitznagel <lukas.spitznagel@netzint.de>  Fri, 3 May 2024 11:45:02 +0200
+
 linuxmuster-webui7 (17.2.49) lmn72-testing; urgency=medium
 
   * Merge new commit from linuxmuster.net
@@ -86,6 +92,12 @@ linuxmuster-webui7 (17.2.22) lmn72; urgency=low
 
  -- Andreas Till <andreas.till@netzint.de>  Mon, 07 Aug 2023 18:20:08 +0200
  
+linuxmuster-webui7 (7.2.50) lmn72; urgency=medium
+
+  * [webdav] Fix paths for get requests. 
+
+ -- Arnaud Kientz <arnaud@linuxmuster.net>  Thu, 02 May 2024 17:11:31 +0200
+
 linuxmuster-webui7 (7.2.49) lmn72; urgency=medium
 
   * [session] Add missing computer for user in room 
