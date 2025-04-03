@@ -19,12 +19,6 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
         'file': "far fa-file",
     }
 
-    $scope.management = {
-        'wifi': false,
-        'internet': false,
-        'printing': false,
-    }
-
     $window.onbeforeunload = (event) ->
         if !$scope.sessionChanged
             return
@@ -80,6 +74,12 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
     $scope.extExamUsers = lmnSession.extExamUsers
     $scope.examUsers = lmnSession.examUsers
     $scope.examMode = lmnSession.examMode
+
+    $scope.management = {
+        'wifi': $scope.session.members.filter((user) => user.wifi == true).length == $scope.session.members.length,
+        'internet': $scope.session.members.filter((user) => user.internet == true).length == $scope.session.members.length,
+        'printing': $scope.session.members.filter((user) => user.printing == true).length == $scope.session.members.length,
+    }
 
     lmnSession.createWorkingDirectory($scope.session.members).then () ->
         $scope.missing_schoolclasses = lmnSession.user_missing_membership.map((user) -> user.sophomorixAdminClass)
@@ -238,7 +238,8 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
             $scope.backToSessionList()
 
     $scope.saveAsSession = () ->
-        lmnSession.new($scope.session.members).then () ->
+        memberslist = $scope.session.members.map((user) => user.cn);
+        lmnSession.new(memberslist).then () ->
             $scope.sessionChanged = false
             # TODO : would be better to get the session id and simply set the current session
             # instead of going back to the sessions list
@@ -255,20 +256,35 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
 
     $scope.$watch 'addParticipant', () ->
         if $scope.addParticipant
+            current_users = $scope.session.members.map((user) => user.cn)
+            if current_users.includes($scope.addParticipant.sAMAccountName)
+                notify.success($scope.addParticipant.sAMAccountName + gettext(" is already member of the course."))
+                return
+
             $http.post('/api/lmn/session/userinfo', {'users':[$scope.addParticipant.sAMAccountName]}).then (resp) ->
                 new_participant = resp.data[0]
                 $scope.addParticipant = ''
+
                 if !$scope.session.generated
                     # Real session: must be added in LDAP
                     $http.post('/api/lmn/session/participants', {'users':[new_participant.sAMAccountName], 'session': $scope.session.sid})
                 else
                     $scope.sessionChanged = true
+
                 $scope.session.members.push(new_participant)
                 $scope.refreshUsers()
 
     $scope.$watch 'addSchoolClass', () ->
         if $scope.addSchoolClass
-            members = $scope.addSchoolClass.sophomorixMembers
+            members = []
+            current_users = $scope.session.members.map((user) => user.cn)
+            for member in $scope.addSchoolClass.sophomorixMembers
+                if !current_users.includes(member)
+                    members.push(member)
+
+            if members.length == 0
+                return
+
             $http.post('/api/lmn/session/userinfo', {'users':members}).then (resp) ->
                 new_participants = resp.data
                 $scope.addSchoolClass = ''
@@ -293,8 +309,8 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
 
     # Exam mode
 
-    $scope.startExam = () ->
-        if $scope.examMode
+    $scope.startExam = (user) ->
+        if $scope.examMode and !user
             return
 
         # End exam for a whole group
@@ -305,10 +321,15 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
         }).then () ->
             wait.modal(gettext("Starting exam mode ..."), "spinner")
             $scope.stateChanged = true
-            $scope.examMode = true
-            $http.patch("/api/lmn/session/exam/start", {session: $scope.session}).then (resp) ->
+            if user
+                session = {"members":[{'cn': user}]}
+            else
+                session = $scope.session
+                $scope.examMode = true
+
+            $http.patch("/api/lmn/session/exam/start", {session: session}).then (resp) ->
                 $scope.stateChanged = false
-                lmnSession.getExamUsers()
+                lmnSession.getExamUsers(user)
                 $scope.stopRefreshFiles()
                 $rootScope.$emit('updateWaiting', 'done')
 
@@ -360,16 +381,15 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
             positive: gettext('End exam mode'),
             negative: gettext('Cancel')
         }).then () ->
-            promises = []
-            for user in $scope.extExamUsers
-                promises.push($scope._stopUserExam(user))
-            for user in $scope.examUsers
-                promises.push($scope._stopUserExam(user))
             wait.modal(gettext("Stopping exam mode ..."), "spinner")
-            $q.all(promises).then () ->
-                $scope.refreshUsers()
-                $rootScope.$emit('updateWaiting', 'done')
-                notify.success(gettext('Exam mode stopped for all users.'))
+            for user in $scope.extExamUsers
+                await $scope._stopUserExam(user)
+            for user in $scope.examUsers
+                await $scope._stopUserExam(user)
+
+            $scope.refreshUsers()
+            $rootScope.$emit('updateWaiting', 'done')
+            notify.success(gettext('Exam mode stopped for all users.'))
 
     $scope._checkExamUser = (username) ->
         if username.endsWith('-exam')
@@ -421,13 +441,17 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
               user: () -> user
         ).result
 
+    $scope.smbcopy_notify = (src, dst, name, user) ->
+       return smbclient.copy(src, dst, notify_success=false).then () ->
+            notify.success(gettext("File #{name} shared to #{user}!"))
+
     $scope._share = (participant, items) ->
         share_path = "#{participant.homeDirectory}\\transfer\\#{identity.profile.sAMAccountName}"
-        promises = []
+        # Fake Promise to create a real sequential mode
+        sharePromise = new Promise((resolve, reject) -> resolve())
         for item in items
-            promises.push(smbclient.copy(item.path, share_path + '/' + item.name, notify_success=false))
-        $q.all(promises).then () ->
-            notify.success(gettext("Files shared!"))
+            await $scope.smbcopy_notify(item.path, share_path + '/' + item.name, item.name, participant.sAMAccountName )
+        return sharePromise
 
     $scope.shareUser = (participant) ->
         # participants is an array containing one or all participants
@@ -444,7 +468,7 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
             if result.response is 'accept'
                 for participant in $scope.session.members
                     if $scope.isStudent(participant)
-                        $scope._share(participant, result.items)
+                        await $scope._share(participant, result.items)
 
     $scope._leading_zero = (int) ->
         if "#{int}".length == 1
@@ -463,25 +487,23 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
         return "#{year}#{month}#{day}-#{hours}#{minutes}#{seconds}"
 
     $scope._collect = (command, items, collect_path) ->
-        promises = []
+        collectPromise = new Promise((resolve, reject) -> resolve())
         if command is 'copy'
             for item in items
-                promises.push(smbclient.copy(item.path, collect_path + '/' + item.name, notify_success=false))
+                await smbclient.copy(item.path, collect_path + '/' + item.name, notify_success=false)
         if command is 'move'
             for item in items
-                promises.push(smbclient.move(item.path, collect_path + '/' + item.name, notify_success=false))
-        return $q.all(promises)
+                await smbclient.move(item.path, collect_path + '/' + item.name, notify_success=false)
+        return collectPromise
 
     $scope.collectAll = (command) ->
         # command is copy or move
 
-        promises = []
         now = $scope.now()
         transfer_directory = "#{$scope.session.type}_#{$scope.session.name}_#{now}"
         collect_path = "#{identity.profile.homeDirectory}\\transfer\\collected\\#{transfer_directory}"
         smbclient.createDirectory(collect_path)
 
-        promises = []
         for participant in $scope.session.members
             if $scope.isStudent(participant)
                 dst = "#{collect_path}\\#{participant.sAMAccountName}"
@@ -489,12 +511,12 @@ angular.module('lmn.session_new').controller 'LMNSessionController', ($scope, $h
                     "path": "#{participant.homeDirectory}\\transfer\\#{$scope.identity.user}\\_collect",
                     "name": ""
                 }]
-                promises.push($scope._collect(command, items, dst))
-        $q.all(promises).then () ->
-            # _collect directory was moved, so recreating empty working diretories for all
-            lmnSession.createWorkingDirectory($scope.session.members).then () ->
-                $scope.missing_schoolclasses = lmnSession.user_missing_membership.map((user) -> user.sophomorixAdminClass).join(',')
-            notify.success(gettext("Files collected!"))
+                await $scope._collect(command, items, dst)
+
+        # _collect directory was moved, so recreating empty working diretories for all
+        lmnSession.createWorkingDirectory($scope.session.members).then () ->
+            $scope.missing_schoolclasses = lmnSession.user_missing_membership.map((user) -> user.sophomorixAdminClass).join(',')
+        notify.success(gettext("Files collected!"))
 
     $scope.collectUser = (command, participant) ->
         # participant is only one user

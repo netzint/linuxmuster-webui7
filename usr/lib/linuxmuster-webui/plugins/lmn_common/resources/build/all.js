@@ -488,7 +488,8 @@ angular.module('core').directive('teacherAccess', function (identity) {
     this.isValidProjectName = function(name) {
       var error_msg, regExp, validName;
       error_msg = name + gettext(' can only contain lowercase chars or numbers');
-      regExp = /^[a-z0-9_\-]*$/;
+      // Dirty solution to accept special chars in Germany and France ...
+      regExp = /^[a-zA-Z0-9_\-äëïöüÄËÏÖÜßéàèùçÀÉÈÇÙâêîôûÂÊÛÔÎ]*$/;
       validName = regExp.test(name);
       if (!validName) {
         return error_msg;
@@ -837,4 +838,44 @@ angular.module('core').directive('teacherAccess', function (identity) {
   });
 
 }).call(this);
+
+'use strict';
+
+angular.module('lmn.common').config(function ($routeProvider) {
+    $routeProvider.when('/view/lmn/change-school', {
+        templateUrl: '/lmn_common:resources/partial/schoolswitcher.html',
+        controller: 'LMNSchoolSwitcherController'
+    });
+});
+
+angular.module('lmn.common').controller('LMNSchoolSwitcherController', function ($scope, $http, pageTitle, gettext, notify, $uibModal, $window) {
+    pageTitle.set(gettext('Schoolswitcher'));
+
+    $scope.load = function () {
+        $http.get('/api/lmn/activeschool').then(function (resp) {
+            $scope.identity.profile.activeSchool = resp.data;
+            $http.post('/api/lmn/get-schoolname', { school: $scope.identity.profile.activeSchool }).then(function (resp) {
+                $scope.identity.profile.schoolname = resp.data;
+            });
+        });
+
+        $http.get('/api/lmn/list-schools').then(function (resp) {
+            $scope.schools = resp.data;
+        });
+    };
+
+    $scope.switchSchool = function (school) {
+        $http.post('/api/lmn/change-school', { school: school }).then(function (resp) {
+            if (resp.data) {
+                notify.success("School changed successfully");
+            } else {
+                notify.error("Failed to change school!");
+            }
+            $scope.load();
+        });
+    };
+
+    $scope.load();
+});
+
 

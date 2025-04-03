@@ -228,7 +228,7 @@
                 </div>
                 <div ng:if="participant.files_error != 'NOTJOINED' && participant.files_error">
                     <a style="inline-block" class="btn btn-danger" ng:click="fixMembership()">
-                        <span translate>{{participant.files_error}}</span>
+                        <span>{{participant.files_error}}</span>
                     </a>
                 </div>
                 <div ng:if="participant.files_error == ''">
@@ -252,6 +252,17 @@
                        class="btn btn-danger"
                        ng:click="stopUserExam(participant)"
                        title="Stop exam from {{participant.examTeacher}}"
+                    >
+                        <i class="fa fa-graduation-cap"></i>
+                        {{participant.examTeacher}}
+                        <!--                        <i class="fas fa-stop pull-right"></i>-->
+                    </a>
+                </div>
+                <div ng:show="!participant.examMode" style="text-align: center;">
+                    <a style="display:inline-block; width:80px; font-size:100%"
+                       class="btn btn-default"
+                       ng:click="startExam(participant.cn)"
+                       title="Start exam for {{participant.examTeacher}}"
                     >
                         <i class="fa fa-graduation-cap"></i>
                         {{participant.examTeacher}}

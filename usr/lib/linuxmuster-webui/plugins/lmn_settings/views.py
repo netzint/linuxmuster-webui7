@@ -8,9 +8,12 @@ import subprocess
 from jadi import component
 import re
 from glob import glob
+import base64
+import json
+import time
 
 from aj.api.http import get, post, HttpPlugin
-from aj.api.endpoint import endpoint, EndpointError
+from aj.api.endpoint import endpoint, EndpointError, EndpointReturn
 from aj.auth import authorize
 from aj.plugins.lmn_common.lmnfile import LMNFile
 
@@ -227,12 +230,21 @@ class Handler(HttpPlugin):
         :rtype: dict
         """
 
-        def ensure_config_structure(config, role=None):
+        base_display_dict = {
+            'teachers': {1: '', 2: '', 3:''},
+            'students': {1: '', 2: '', 3: ''},
+        }
+
+        def ensure_config_structure(config, number, role=None):
             base_custom_dict = {'show': False, 'editable': False, 'title': ''}
-            base_role_dict = {
-                str(i+1):base_custom_dict
-                for i in range(3)
-            }
+            if number:
+                base_role_dict = {
+                    str(i+1):base_custom_dict
+                    for i in range(number)
+                }
+            else:
+                base_role_dict = base_custom_dict
+
             base_config_dict = {
                 'globaladministrators': {},
                 'schooladministrators': {},
@@ -245,7 +257,7 @@ class Handler(HttpPlugin):
                     role_dict = config.get(role, {})
 
                     if role_dict:
-                        for i in range(3):
+                        for i in range(number):
                             idx = str(i+1)
                             role_dict[idx] = role_dict.get(idx, base_custom_dict)
                             for key, value in base_custom_dict.items():
@@ -258,7 +270,7 @@ class Handler(HttpPlugin):
                 role_dict = config.get(role, {})
 
                 if role_dict:
-                    for i in range(3):
+                    for i in range(number):
                         idx = str(i+1)
                         role_dict[idx] = role_dict.get(idx, base_custom_dict)
                         for key, value in base_custom_dict.items():
@@ -280,19 +292,19 @@ class Handler(HttpPlugin):
         password_templates['individual'] = password_templates.get('individual', '')
 
         config_dict = {
-            'custom': ensure_config_structure(custom_config.get('custom', {})),
-            'customMulti': ensure_config_structure(custom_config.get('customMulti', {})),
-            'customDisplay': custom_config.get('customDisplay', {1:'', 2:'', 3:''}),
-            'proxyAddresses': ensure_config_structure(custom_config.get('proxyAddresses', {})),
+            'custom': ensure_config_structure(custom_config.get('custom', {}), 5),
+            'customMulti': ensure_config_structure(custom_config.get('customMulti', {}), 5),
+            'customDisplay': custom_config.get('customDisplay', base_display_dict),
+            'proxyAddresses': ensure_config_structure(custom_config.get('proxyAddresses', {}), 0),
             'passwordTemplates': password_templates,
         }
 
         if role:
             role_dict = {
-                'custom': ensure_config_structure(config_dict['custom'], role),
-                'customMulti': ensure_config_structure(config_dict['customMulti'], role),
-                'customDisplay': config_dict['customDisplay'].get(role, {1:'', 2:'', 3:''}),
-                'proxyAddresses': ensure_config_structure(config_dict['proxyAddresses'], role),
+                'custom': ensure_config_structure(config_dict['custom'], 5, role),
+                'customMulti': ensure_config_structure(config_dict['customMulti'], 5, role),
+                'customDisplay': config_dict['customDisplay'].get(role, {1: '', 2: '', 3:''}),
+                'proxyAddresses': ensure_config_structure(config_dict['proxyAddresses'], 0, role),
             }
             return role_dict
         return config_dict
@@ -367,3 +379,71 @@ class Handler(HttpPlugin):
         }
         with LMNFile(path, 'w') as f:
             f.write(holidays)
+
+    @get(r'/api/lmn/edulution/api-status')
+    @endpoint(api=True)
+    def handle_api_get_edulution_status(self, http_context):
+        """
+        Check the status of edulution requirements
+
+        :param http_context: HttpContext
+        :type http_context: HttpContext
+        :return: Status of api
+        :rtype: dict
+        """
+
+        status = {
+            "api_installed": False,
+            "api_running": False
+        }
+
+        if os.path.exists("/etc/linuxmuster/api/config.yml"):
+            status['api_installed'] = True
+
+        try:
+            if os.system('systemctl is-active --quiet linuxmuster-api') == 0:
+                status['api_running'] = True
+        except:
+            pass
+
+        return status
+    
+    @post(r'/api/lmn/edulution/generate')
+    @endpoint(api=True)
+    def handle_api_get_edulution_generate(self, http_context):
+        """
+        Generate the edulution setup hash
+
+        :param http_context: HttpContext
+        :type http_context: HttpContext
+        :return: Edulution Setup Hash
+        :rtype: str
+        """
+        
+        if os.getuid() != 0:
+            return EndpointReturn(403)
+        
+        external_domain = http_context.json_body()['external_domain']
+        binduser_name = http_context.json_body()['binduser_name']
+        binduser_dn = http_context.json_body()['binduser_dn']
+
+        secret_path = os.path.join('/etc/linuxmuster/.secret/', binduser_name)
+
+        if not os.path.isfile(secret_path):
+            return EndpointReturn(403)
+        else:
+            with open(secret_path, 'r') as f:
+                binduser_password = f.read()
+
+        data = json.dumps({
+            "external_domain": external_domain,
+            "binduser_name": binduser_name,
+            "binduser_dn": binduser_dn,
+            "binduser_password": binduser_password,
+            "timestamp": time.time()
+        })
+
+        return base64.b64encode(data.encode('utf-8'))
+
+
+

@@ -95,12 +95,33 @@ class SchoolManager:
         Read the school name from school.conf.
         """
 
-
         try:
             with LMNFile(f'{self.configpath}school.conf', 'r') as f:
                 self.schoolname = f.data['school']['SCHOOL_LONGNAME']
         except Exception:
             pass
+
+    def get_schoolname_by_school(self, school):
+        """
+        Returns schoolname by school
+        """
+
+
+        try:
+            with LMNFile(f'{self.configpath}school.conf', 'r') as f:
+                return f.data['school']['SCHOOL_LONGNAME']
+        except Exception:
+            return None
+
+    def get_schools(self):
+        """
+        Returns array of all schools with schoolname
+        """
+
+        allSchools = []
+        for school in self.schools:
+            allSchools.append({"school": school, "schoolname": self.get_schoolname_by_school(school)})
+        return sorted(allSchools, key=lambda d: d['school'])
 
     def load_school_dfs_shares(self):
         """
@@ -159,20 +180,22 @@ class SchoolManager:
 
     def get_homepath(self, user_context):
 
-        if samba_override['share_prefix']:
-            user = user_context['user']
-            role = user_context['role']
-            adminclass = user_context['adminclass']
-            if role == 'globaladministrator':
-                home_path = f'\\\\{samba_override["share_prefix"]}\\linuxmuster-global\\management\\{user}'
-            elif role == 'schooladministrator':
-                home_path = f'{self.share_prefix}\\management\\{user}'
-            elif role == "teacher":
-                home_path = f'{self.share_prefix}\\{role}s\\{user}'
-            else:
-                home_path = f'{self.share_prefix}\\{role}s\\{adminclass}\\{user}'
+        user = user_context['user']
+        role = user_context['role']
+
+        adminclass = user_context['adminclass']
+        if self.school != 'default-school':
+            # Remove prefix from adminclass in home path.
+            adminclass = adminclass.lstrip(f"{self.school}-")
+
+        if role == 'globaladministrator':
+            home_path = f'\\\\{samba_netbios}\\linuxmuster-global\\management\\{user}'
+        elif role == 'schooladministrator':
+            home_path = f'{self.share_prefix}\\management\\{user}'
+        elif role == "teacher":
+            home_path = f'{self.share_prefix}\\{role}s\\{user}'
         else:
-            home_path = user_context['home']
+            home_path = f'{self.share_prefix}\\{role}s\\{adminclass}\\{user}'
 
         return home_path
 

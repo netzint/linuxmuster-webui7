@@ -7,6 +7,7 @@ ajenti.plugin.filesystem==0.50
 ajenti.plugin.plugins==0.52
 ajenti.plugin.settings==0.34
 ajenti.plugin.session-list==0.7
+configobj
 configparser==3.5.0
 cryptography>=41.0.0
 dpath==2.0.6         # used for getSophomorixValue
@@ -24,7 +25,8 @@ pytz
 requests
 reconfigure
 scrypt
-simplejson==3.17.0
-smbprotocol==1.9.0
+setuptools==58.2.0
+simplejson>=3.16.0
+smbprotocol==1.14.0
 unicodecsv==0.14.1
 xmltodict

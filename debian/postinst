@@ -31,7 +31,7 @@ Installing linuxmuster-webui
 ---------------------------------------------------------------"
 
             # do first install
-            /usr/bin/python3 -m pip install -U pip wheel setuptools #distribute
+            /usr/bin/python3 -m pip install -U pip wheel #setuptools #distribute
             hash -r
             /usr/bin/python3 -m pip install -r $webuietc/requirements.txt
 
@@ -42,6 +42,9 @@ Installing linuxmuster-webui
                 msg "Backing up config.yml"
                 cp -a $ajcfg $ajcfg.bak
             fi
+
+            mkdir -p /srv/.webdav
+            chmod 777 /srv/.webdav
 
             # Update 7.1.11, same scheme for all directories, prefer underscore to hyphen
             if [ -d "/etc/linuxmuster/webui/email-templates" ] ; then
@@ -130,6 +133,9 @@ Updating linuxmuster-webui
             # Recreate upload folder using the right permissions
             msg "Verifying upload folder"
             bash $install_scripts/create_webuiUploadFolder.sh
+
+            mkdir -p /srv/.webdav
+            chmod 777 /srv/.webdav
 
             # Avoid empty smtp config file until Ajenti 2.2.1
             if  [ ! -f /etc/ajenti/smtp.yml ] ; then

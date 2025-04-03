@@ -511,3 +511,7 @@ floating-toolbar.accented .bar .btn-flat {
   font-weight: bold;
 }
 
+.school-item:hover {
+  background-color: lightgray;
+}
+

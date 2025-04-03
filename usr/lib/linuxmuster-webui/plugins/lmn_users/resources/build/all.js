@@ -2014,6 +2014,27 @@
     });
   });
 
+  angular.module('lmn.users').controller('UsersAddController', function($scope, $http, pageTitle, gettext, notify, $uibModalInstance, $uibModal) {
+    $scope.save = function(type) {
+      var role;
+      role = $scope.newUser.role;
+      delete $scope.newUser.role;
+      if (role === 'student') {
+        $scope.students.unshift($scope.newUser);
+      }
+      if (role === 'teacher') {
+        $scope.teachers.unshift($scope.newUser);
+      }
+      if (role === 'extrastudent') {
+        $scope.extrastudents.unshift($scope.newUser);
+      }
+      return $scope.close();
+    };
+    return $scope.close = function() {
+      return $uibModalInstance.close();
+    };
+  });
+
   angular.module('lmn.users').controller('LMUsersListManagementController', function($scope, $http, $location, $route, $uibModal, gettext, hotkeys, notify, lmEncodingMap, messagebox, pageTitle, lmFileEditor, lmFileBackups, filesystem, validation) {
     pageTitle.set(gettext('Listmanagement'));
     $scope.activeTab = 0;
@@ -2192,7 +2213,7 @@
       },
       login: {
         visible: true,
-        name: gettext('Login')
+        name: gettext('Desired login')
       }
     };
     $scope.extrastudents_fields = {
@@ -2214,7 +2235,7 @@
       },
       login: {
         visible: true,
-        name: gettext('Login')
+        name: gettext('Desired login')
       }
     };
     $scope.teachers_first_save = false;
@@ -2225,35 +2246,56 @@
     $scope.students = '';
     $scope.extrastudents = '';
     $scope.courses = '';
+    $scope.csvlogin_notldap = gettext("This entry is directly read from the CSV file and could differ from the actual login of the user (saved in LDAP)");
     $scope.students_add = function() {
-      if ($scope.students.length > 0) {
-        $scope.paging.page_students = Math.floor(($scope.students.length - 1) / $scope.paging.pageSize) + 1;
-      }
-      $scope.students_filter = '';
-      return $scope.students.push({
-        '_isNew': true,
-        'first_name': '',
-        'last_name': '',
-        'class': ''
+      $scope.newUser = {
+        _isNew: true,
+        role: 'student',
+        class: '',
+        last_name: '',
+        first_name: '',
+        birthday: '',
+        id: ''
+      };
+      return $uibModal.open({
+        templateUrl: '/lmn_users:resources/partial/addUser.modal.html',
+        controller: 'UsersAddController',
+        size: 'mg',
+        scope: $scope
       });
     };
     $scope.teachers_add = function() {
-      if ($scope.teachers.length > 0) {
-        $scope.paging.page_teachers = Math.floor(($scope.teachers.length - 1) / $scope.paging.pageSize) + 1;
-      }
-      $scope.teachers_filter = '';
-      return $scope.teachers.push({
+      $scope.newUser = {
+        _isNew: true,
         class: 'Lehrer',
-        _isNew: true
+        role: 'teacher',
+        last_name: '',
+        first_name: '',
+        birthday: '',
+        login: ''
+      };
+      return $uibModal.open({
+        templateUrl: '/lmn_users:resources/partial/addUser.modal.html',
+        controller: 'UsersAddController',
+        size: 'mg',
+        scope: $scope
       });
     };
     $scope.extrastudents_add = function() {
-      if ($scope.extrastudents.length > 0) {
-        $scope.paging.page_extrastudents = Math.floor(($scope.extrastudents.length - 1) / $scope.paging.pageSize) + 1;
-      }
-      $scope.extrastudents_filter = '';
-      return $scope.extrastudents.push({
-        _isNew: true
+      $scope.newUser = {
+        _isNew: true,
+        role: 'extrastudent',
+        class: '',
+        last_name: '',
+        first_name: '',
+        birthday: '',
+        login: ''
+      };
+      return $uibModal.open({
+        templateUrl: '/lmn_users:resources/partial/addUser.modal.html',
+        controller: 'UsersAddController',
+        size: 'mg',
+        scope: $scope
       });
     };
     $scope.courses_add = function() {
@@ -2658,7 +2700,7 @@ angular.module('lmn.users').service('userPassword', function ($http, $uibModal, 
 angular.module('lmn.common').service('customFields', function ($http, messagebox, gettext, notify) {
     var _this = this;
 
-    this.customDisplayOptions = ['proxyAddresses', 'sophomorixCustom1', 'sophomorixCustom2', 'sophomorixCustom3', 'sophomorixCustom4', 'sophomorixCustom5', 'sophomorixCustomMulti1', 'sophomorixCustomMulti2', 'sophomorixCustomMulti3', 'sophomorixCustomMulti4', 'sophomorixCustomMulti5'];
+    this.customDisplayOptions = ['', 'proxyAddresses', 'sophomorixCustom1', 'sophomorixCustom2', 'sophomorixCustom3', 'sophomorixCustom4', 'sophomorixCustom5', 'sophomorixCustomMulti1', 'sophomorixCustomMulti2', 'sophomorixCustomMulti3', 'sophomorixCustomMulti4', 'sophomorixCustomMulti5'];
 
     this.customLists = ['proxyAddresses', 'sophomorixCustomMulti1', 'sophomorixCustomMulti2', 'sophomorixCustomMulti3', 'sophomorixCustomMulti4', 'sophomorixCustomMulti5'];
 

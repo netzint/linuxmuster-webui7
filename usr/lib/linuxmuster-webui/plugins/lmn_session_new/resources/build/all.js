@@ -168,16 +168,27 @@ angular.module('lmn.session_new').service('lmnSession', function ($http, $uibMod
         $location.path('/view/lmn/session');
     };
 
-    this.getExamUsers = function () {
+    this.getExamUsers = function (single_user) {
         users = _this.current.members.map(function (user) {
             return user.cn;
         });
-        $http.post('/api/lmn/session/exam/userinfo', { 'users': users }).then(function (resp) {
-            _this.current.members = resp.data;
-            _this.createWorkingDirectory(_this.current.members);
-            _this.filterExamUsers();
-            $location.path('/view/lmn/session');
-        });
+        if (single_user) {
+            pos = users.indexOf(single_user);
+            _this.current.members.splice(pos, 1);
+            $http.post('/api/lmn/session/exam/userinfo', { 'users': [single_user] }).then(function (resp) {
+                _this.current.members.push(resp.data[0]);
+                _this.createWorkingDirectory(_this.current.members);
+                _this.filterExamUsers();
+                $location.path('/view/lmn/session');
+            });
+        } else {
+            $http.post('/api/lmn/session/exam/userinfo', { 'users': users }).then(function (resp) {
+                _this.current.members = resp.data;
+                _this.createWorkingDirectory(_this.current.members);
+                _this.filterExamUsers();
+                $location.path('/view/lmn/session');
+            });
+        }
     };
 
     this.refreshUsers = function () {
@@ -274,11 +285,6 @@ angular.module('lmn.session_new').service('lmnSession', function ($http, $uibMod
       'image': "far fa-file-image",
       'file': "far fa-file"
     };
-    $scope.management = {
-      'wifi': false,
-      'internet': false,
-      'printing': false
-    };
     $window.onbeforeunload = function(event) {
       if (!$scope.sessionChanged) {
         return;
@@ -340,6 +346,17 @@ angular.module('lmn.session_new').service('lmnSession', function ($http, $uibMod
     $scope.extExamUsers = lmnSession.extExamUsers;
     $scope.examUsers = lmnSession.examUsers;
     $scope.examMode = lmnSession.examMode;
+    $scope.management = {
+      'wifi': $scope.session.members.filter((user) => {
+        return user.wifi === true;
+      }).length === $scope.session.members.length,
+      'internet': $scope.session.members.filter((user) => {
+        return user.internet === true;
+      }).length === $scope.session.members.length,
+      'printing': $scope.session.members.filter((user) => {
+        return user.printing === true;
+      }).length === $scope.session.members.length
+    };
     lmnSession.createWorkingDirectory($scope.session.members).then(function() {
       $scope.missing_schoolclasses = lmnSession.user_missing_membership.map(function(user) {
         return user.sophomorixAdminClass;
@@ -557,7 +574,11 @@ angular.module('lmn.session_new').service('lmnSession', function ($http, $uibMod
       });
     };
     $scope.saveAsSession = function() {
-      return lmnSession.new($scope.session.members).then(function() {
+      var memberslist;
+      memberslist = $scope.session.members.map((user) => {
+        return user.cn;
+      });
+      return lmnSession.new(memberslist).then(function() {
         $scope.sessionChanged = false;
         // TODO : would be better to get the session id and simply set the current session
         // instead of going back to the sessions list
@@ -576,7 +597,15 @@ angular.module('lmn.session_new').service('lmnSession', function ($http, $uibMod
       });
     };
     $scope.$watch('addParticipant', function() {
+      var current_users;
       if ($scope.addParticipant) {
+        current_users = $scope.session.members.map((user) => {
+          return user.cn;
+        });
+        if (current_users.includes($scope.addParticipant.sAMAccountName)) {
+          notify.success($scope.addParticipant.sAMAccountName + gettext(" is already member of the course."));
+          return;
+        }
         return $http.post('/api/lmn/session/userinfo', {
           'users': [$scope.addParticipant.sAMAccountName]
         }).then(function(resp) {
@@ -598,9 +627,22 @@ angular.module('lmn.session_new').service('lmnSession', function ($http, $uibMod
       }
     });
     $scope.$watch('addSchoolClass', function() {
-      var members;
+      var current_users, i, len, member, members, ref;
       if ($scope.addSchoolClass) {
-        members = $scope.addSchoolClass.sophomorixMembers;
+        members = [];
+        current_users = $scope.session.members.map((user) => {
+          return user.cn;
+        });
+        ref = $scope.addSchoolClass.sophomorixMembers;
+        for (i = 0, len = ref.length; i < len; i++) {
+          member = ref[i];
+          if (!current_users.includes(member)) {
+            members.push(member);
+          }
+        }
+        if (members.length === 0) {
+          return;
+        }
         return $http.post('/api/lmn/session/userinfo', {
           'users': members
         }).then(function(resp) {
@@ -640,8 +682,8 @@ angular.module('lmn.session_new').service('lmnSession', function ($http, $uibMod
       }
     };
     // Exam mode
-    $scope.startExam = function() {
-      if ($scope.examMode) {
+    $scope.startExam = function(user) {
+      if ($scope.examMode && !user) {
         return;
       }
       // End exam for a whole group
@@ -650,14 +692,26 @@ angular.module('lmn.session_new').service('lmnSession', function ($http, $uibMod
         positive: gettext('Start exam mode'),
         negative: gettext('Cancel')
       }).then(function() {
+        var session;
         wait.modal(gettext("Starting exam mode ..."), "spinner");
         $scope.stateChanged = true;
-        $scope.examMode = true;
+        if (user) {
+          session = {
+            "members": [
+              {
+                'cn': user
+              }
+            ]
+          };
+        } else {
+          session = $scope.session;
+          $scope.examMode = true;
+        }
         return $http.patch("/api/lmn/session/exam/start", {
-          session: $scope.session
+          session: session
         }).then(function(resp) {
           $scope.stateChanged = false;
-          lmnSession.getExamUsers();
+          lmnSession.getExamUsers(user);
           $scope.stopRefreshFiles();
           return $rootScope.$emit('updateWaiting', 'done');
         });
@@ -720,25 +774,22 @@ angular.module('lmn.session_new').service('lmnSession', function ($http, $uibMod
         text: gettext('Do you really want to end all running exams?'),
         positive: gettext('End exam mode'),
         negative: gettext('Cancel')
-      }).then(function() {
-        var i, j, len, len1, promises, ref, ref1, user;
-        promises = [];
+      }).then(async function() {
+        var i, j, len, len1, ref, ref1, user;
+        wait.modal(gettext("Stopping exam mode ..."), "spinner");
         ref = $scope.extExamUsers;
         for (i = 0, len = ref.length; i < len; i++) {
           user = ref[i];
-          promises.push($scope._stopUserExam(user));
+          await $scope._stopUserExam(user);
         }
         ref1 = $scope.examUsers;
         for (j = 0, len1 = ref1.length; j < len1; j++) {
           user = ref1[j];
-          promises.push($scope._stopUserExam(user));
+          await $scope._stopUserExam(user);
         }
-        wait.modal(gettext("Stopping exam mode ..."), "spinner");
-        return $q.all(promises).then(function() {
-          $scope.refreshUsers();
-          $rootScope.$emit('updateWaiting', 'done');
-          return notify.success(gettext('Exam mode stopped for all users.'));
-        });
+        $scope.refreshUsers();
+        $rootScope.$emit('updateWaiting', 'done');
+        return notify.success(gettext('Exam mode stopped for all users.'));
       });
     };
     $scope._checkExamUser = function(username) {
@@ -807,17 +858,24 @@ angular.module('lmn.session_new').service('lmnSession', function ($http, $uibMod
         }
       }).result;
     };
-    $scope._share = function(participant, items) {
-      var i, item, len, notify_success, promises, share_path;
+    $scope.smbcopy_notify = function(src, dst, name, user) {
+      var notify_success;
+      return smbclient.copy(src, dst, notify_success = false).then(function() {
+        return notify.success(gettext(`File ${name} shared to ${user}!`));
+      });
+    };
+    $scope._share = async function(participant, items) {
+      var i, item, len, sharePromise, share_path;
       share_path = `${participant.homeDirectory}\\transfer\\${identity.profile.sAMAccountName}`;
-      promises = [];
+      // Fake Promise to create a real sequential mode
+      sharePromise = new Promise(function(resolve, reject) {
+        return resolve();
+      });
       for (i = 0, len = items.length; i < len; i++) {
         item = items[i];
-        promises.push(smbclient.copy(item.path, share_path + '/' + item.name, notify_success = false));
+        await $scope.smbcopy_notify(item.path, share_path + '/' + item.name, item.name, participant.sAMAccountName);
       }
-      return $q.all(promises).then(function() {
-        return notify.success(gettext("Files shared!"));
-      });
+      return sharePromise;
     };
     $scope.shareUser = function(participant) {
       var choose_path, print_path;
@@ -834,7 +892,7 @@ angular.module('lmn.session_new').service('lmnSession', function ($http, $uibMod
       var choose_path, print_path;
       choose_path = `${identity.profile.homeDirectory}\\transfer`;
       print_path = "transfer";
-      return $scope.choose_items(choose_path, print_path, 'share', 'all').then(function(result) {
+      return $scope.choose_items(choose_path, print_path, 'share', 'all').then(async function(result) {
         var i, len, participant, ref, results;
         if (result.response === 'accept') {
           ref = $scope.session.members;
@@ -842,7 +900,7 @@ angular.module('lmn.session_new').service('lmnSession', function ($http, $uibMod
           for (i = 0, len = ref.length; i < len; i++) {
             participant = ref[i];
             if ($scope.isStudent(participant)) {
-              results.push($scope._share(participant, result.items));
+              results.push((await $scope._share(participant, result.items)));
             } else {
               results.push(void 0);
             }
@@ -869,32 +927,32 @@ angular.module('lmn.session_new').service('lmnSession', function ($http, $uibMod
       seconds = $scope._leading_zero(date.getSeconds());
       return `${year}${month}${day}-${hours}${minutes}${seconds}`;
     };
-    $scope._collect = function(command, items, collect_path) {
-      var i, item, j, len, len1, notify_success, promises;
-      promises = [];
+    $scope._collect = async function(command, items, collect_path) {
+      var collectPromise, i, item, j, len, len1, notify_success;
+      collectPromise = new Promise(function(resolve, reject) {
+        return resolve();
+      });
       if (command === 'copy') {
         for (i = 0, len = items.length; i < len; i++) {
           item = items[i];
-          promises.push(smbclient.copy(item.path, collect_path + '/' + item.name, notify_success = false));
+          await smbclient.copy(item.path, collect_path + '/' + item.name, notify_success = false);
         }
       }
       if (command === 'move') {
         for (j = 0, len1 = items.length; j < len1; j++) {
           item = items[j];
-          promises.push(smbclient.move(item.path, collect_path + '/' + item.name, notify_success = false));
+          await smbclient.move(item.path, collect_path + '/' + item.name, notify_success = false);
         }
       }
-      return $q.all(promises);
+      return collectPromise;
     };
-    $scope.collectAll = function(command) {
-      var collect_path, dst, i, items, len, now, participant, promises, ref, transfer_directory;
+    $scope.collectAll = async function(command) {
+      var collect_path, dst, i, items, len, now, participant, ref, transfer_directory;
       // command is copy or move
-      promises = [];
       now = $scope.now();
       transfer_directory = `${$scope.session.type}_${$scope.session.name}_${now}`;
       collect_path = `${identity.profile.homeDirectory}\\transfer\\collected\\${transfer_directory}`;
       smbclient.createDirectory(collect_path);
-      promises = [];
       ref = $scope.session.members;
       for (i = 0, len = ref.length; i < len; i++) {
         participant = ref[i];
@@ -906,18 +964,16 @@ angular.module('lmn.session_new').service('lmnSession', function ($http, $uibMod
               "name": ""
             }
           ];
-          promises.push($scope._collect(command, items, dst));
+          await $scope._collect(command, items, dst);
         }
       }
-      return $q.all(promises).then(function() {
-        // _collect directory was moved, so recreating empty working diretories for all
-        lmnSession.createWorkingDirectory($scope.session.members).then(function() {
-          return $scope.missing_schoolclasses = lmnSession.user_missing_membership.map(function(user) {
-            return user.sophomorixAdminClass;
-          }).join(',');
-        });
-        return notify.success(gettext("Files collected!"));
+      // _collect directory was moved, so recreating empty working diretories for all
+      lmnSession.createWorkingDirectory($scope.session.members).then(function() {
+        return $scope.missing_schoolclasses = lmnSession.user_missing_membership.map(function(user) {
+          return user.sophomorixAdminClass;
+        }).join(',');
       });
+      return notify.success(gettext("Files collected!"));
     };
     $scope.collectUser = function(command, participant) {
       var choose_path, collect_path, now, print_path, transfer_directory;

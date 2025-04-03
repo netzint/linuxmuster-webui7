@@ -4,13 +4,13 @@ Tools to handle files, directories and uploads.
 
 import os
 import tempfile
-from urllib.parse import quote, unquote
 import locale
+from datetime import datetime
 from zipfile import ZipFile
+from urllib.parse import quote, unquote
 
 import gevent
 import smbclient
-import logging
 from smbprotocol.exceptions import SMBOSError, NotFound, SMBAuthenticationError, InvalidParameter, SMBException
 from spnego.exceptions import BadMechanismError
 from jadi import component
@@ -57,7 +57,7 @@ class Handler(HttpPlugin):
     def _convert_path(self, path):
         # In gevent, headers are decoded with latin-1
         # Dirty fix for it
-        return path.encode('latin-1').decode('utf-8')
+        return unquote(path.encode('latin-1').decode('utf-8'))
 
     @get(r'/api/webdav/list')
     @endpoint(api=True)
@@ -70,13 +70,13 @@ class Handler(HttpPlugin):
         if '..' in path:
             return http_context.respond_forbidden()
 
-        path = self._convert_path(unquote(path))
+        path = self._convert_path(path)
         name = path.split('/')[-1]
         ext = os.path.splitext(name)[1]
 
         user = self.context.identity
         profil = AuthenticationService.get(self.context).get_provider().get_profile(user)
-        url_path = self._convert_path(path).replace('/', '\\')
+        url_path = path.replace('/', '\\')
         if profil['sophomorixRole'] == 'globaladministrator':
             if path.startswith('global/') or path == 'global':
                 url_path = url_path.replace('global\\', '')
@@ -111,19 +111,28 @@ class Handler(HttpPlugin):
             return ''
 
         if isdir:
-            zip_name = f'{quote(name)}.zip'
-            tmp_dir = tempfile.mkdtemp()
-            zip_path = f'{tmp_dir}/{zip_name}'
+            try:
+                zip_name = f'{quote(name)}.zip'
+                now = datetime.now().strftime('%Y%m%d%H%M')
+                tmp_dir = tempfile.mkdtemp(prefix=f"{user}_", suffix=f"_{now}", dir="/srv/.webdav")
+                zip_path = f'{tmp_dir}/{zip_name}'
 
-            with ZipFile(zip_path, 'w') as zip_obj:
-                for root, folders, files in smbclient.walk(smb_path):
-                    for f in files:
-                        relative_path = root.replace(path, '').replace('\\', '/')[1:]
-                        relative_path = f"{relative_path}/{f}"
-                        smb_file_path = f"{root}\\{f}"
-                        with smbclient.open_file(smb_file_path, 'rb') as file_io:
-                            content = file_io.read()
-                        zip_obj.writestr(relative_path, content)
+                with ZipFile(zip_path, 'w') as zip_obj:
+                    for root, folders, files in smbclient.walk(smb_path):
+                        for f in files:
+                            relative_path = root.replace(path, '').replace('\\', '/')[1:]
+                            relative_path = f"{relative_path}/{f}"
+                            smb_file_path = f"{root}\\{f}"
+                            with smbclient.open_file(smb_file_path, 'rb') as file_io:
+                                content = file_io.read()
+                            zip_obj.writestr(relative_path, content)
+            except Exception as e:
+                # Could be a quota error : OSError: [Errno 122] Disk quota exceeded
+                os.unlink(zip_path)
+                os.rmdir(tmp_dir)
+                http_context.respond('507 Insufficient Storage')
+                return ''
+
             ext = '.zip'
 
         if ext in content_mimetypes:
@@ -273,7 +282,8 @@ class Handler(HttpPlugin):
                 items[href] = response.convert_samba_entry_properties(item)
                 items[href]['displayname'] = share['name']
         else:
-            url_path = self._convert_path(path).replace('/', '\\')
+            path = self._convert_path(path)
+            url_path = path.replace('/', '\\')
             if profil['sophomorixRole'] == 'globaladministrator':
                 if path.startswith('global/'):
                     url_path = url_path.replace('global\\', '')

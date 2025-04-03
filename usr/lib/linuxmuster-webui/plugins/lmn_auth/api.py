@@ -34,7 +34,7 @@ class LMAuthenticationProvider(AuthenticationProvider):
 
     id = 'lm'
     name = _('Linux Muster LDAP') # skipcq: PYL-E0602
-    pw_reset = pwreset_config['activate']
+    pw_reset = pwreset_config.get('activate', False)
 
     def __init__(self, context):
         self.context = context
@@ -67,33 +67,47 @@ class LMAuthenticationProvider(AuthenticationProvider):
         """
 
         # Initialize school manager
-        active_school = self.get_profile(username)['activeSchool']
-        schoolmgr = SchoolManager()
-        schoolmgr.switch(active_school)
-        self.context.schoolmgr = schoolmgr
-        self.context.ldapreader = LMNLdapReader
+        if username in ["root", None]:
+            active_school = "default-school"
+        else:
+            profil = self.get_ldap_user(username)
+            # Test purpose for multischool
+            if profil['sophomorixSchoolname'] == 'global':
+                active_school = "default-school"
+            else:
+                active_school = profil['sophomorixSchoolname']
 
-        def schoolget(*args, **kwargs):
-            """
-            This alias allow to automatically pass the school context for school
-            specific requests.
-            """
+        #active_school = self.get_profile(username)['activeSchool']
 
-            result = self.context.ldapreader.get(*args,**kwargs, school=self.context.schoolmgr.school)
-            return result
+        try:
+            schoolmgr = SchoolManager()
+            schoolmgr.switch(active_school)
+            self.context.schoolmgr = schoolmgr
+            self.context.ldapreader = LMNLdapReader
 
-        self.context.ldapreader.schoolget = schoolget
- 
-        # Permissions for kerberos ticket
-        uid = self.get_isolation_uid(username)
+            def schoolget(*args, **kwargs):
+                """
+                This alias allow to automatically pass the school context for school
+                specific requests.
+                """
 
-        if os.path.isfile(f'/tmp/krb5cc_{uid}{uid}'):
-            if os.path.isfile(f'/tmp/krb5cc_{uid}'):
-                os.unlink(f'/tmp/krb5cc_{uid}')
+                result = self.context.ldapreader.get(*args,**kwargs, school=self.context.schoolmgr.school)
+                return result
 
-            os.rename(f'/tmp/krb5cc_{uid}{uid}', f'/tmp/krb5cc_{uid}')
-            logging.warning(f"Changing kerberos ticket rights for {username}")
-            os.chown(f'/tmp/krb5cc_{uid}', uid, 100)
+            self.context.ldapreader.schoolget = schoolget
+
+            # Permissions for kerberos ticket
+            uid = self.get_isolation_uid(username)
+
+            if os.path.isfile(f'/tmp/krb5cc_{uid}{uid}'):
+                if os.path.isfile(f'/tmp/krb5cc_{uid}'):
+                    os.unlink(f'/tmp/krb5cc_{uid}')
+
+                os.rename(f'/tmp/krb5cc_{uid}{uid}', f'/tmp/krb5cc_{uid}')
+                logging.warning(f"Changing kerberos ticket rights for {username}")
+                os.chown(f'/tmp/krb5cc_{uid}', uid, 100)
+        except Exception as e:
+            logging.warning(str(e))
 
     def _get_krb_ticket(self, username, password):
         """
@@ -338,18 +352,28 @@ class LMAuthenticationProvider(AuthenticationProvider):
         """
 
         if username in ["root",None]:
-            return {'activeSchool': 'default-school'}
+            return {'activeSchool': 'default-school', 'school_show': True, 'schoolname': "Default School"}
         try:
             profil = self.get_ldap_user(username)
-            # Test purpose for multischool
+            
             if profil['sophomorixSchoolname'] == 'global':
                 profil['activeSchool'] = "default-school"
             else:
-                profil['activeSchool'] = profil['sophomorixSchoolname']
+                if self.context.schoolmgr.school:
+                    profil['activeSchool'] = self.context.schoolmgr.school
+                else:
+                    profil['activeSchool'] = profil['sophomorixSchoolname']
 
-            if lmsetup_schoolname:
-                # TODO : use .self.context.schoolmgr.schoolname if available
+            if self.context.schoolmgr.schools and len(self.context.schoolmgr.schools) > 1 and "role-globaladministrator" in ''.join(profil.get('memberOf', [])):
+                profil['school_show'] = True
+            else:
+                profil['school_show'] = False
+            
+            if self.context.schoolmgr.schoolname:
+                profil['schoolname'] = self.context.schoolmgr.schoolname
+            else:
                 profil['schoolname'] = lmsetup_schoolname
+
             return json.loads(json.dumps(profil))
         except Exception as e:
             logging.error(e)
